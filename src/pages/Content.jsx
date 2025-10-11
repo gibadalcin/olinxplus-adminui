@@ -165,7 +165,7 @@ export default function Content() {
             <button
                 onClick={() => navigate("/images")}
                 style={{
-                    position: "absolute",
+                    position: "fixed",
                     top: 24,
                     left: isMobile ? 8 : 32,
                     zIndex: 10000,
@@ -220,122 +220,125 @@ export default function Content() {
                     Salvar
                 </CustomButton>
             </div>
-            <FadeIn show={showContent}>
-                <Box
-                    sx={{
-                        width: '100vw',
-                        paddingTop: "4rem",
-                        flex: 1,
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                        borderRadius: "12px",
-                        boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        backdropFilter: "blur(18px)",
-                        WebkitBackdropFilter: "blur(18px)",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "flex-start",
-                        color: "#fff",
-                        overflowY: "auto",
-                        scrollbarWidth: "none",
-                        "&::-webkit-scrollbar": {
-                            display: "none",
-                        },
-                    }}
-                >
-                    <Header />
-                    <MainTitle isMobile={isMobile}>Cadastrar Conteúdo</MainTitle>
-                    {/* Remova os botões do formulário */}
-                    <form
-                        onSubmit={handleSubmit}
-                        style={{
+            <div style={{
+                backgroundColor: "rgba(255,255,255,0.08)",
+                borderRadius: "12px",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                backdropFilter: "blur(18px)",
+                WebkitBackdropFilter: "blur(18px)",
+            }}>
+                <FadeIn show={showContent}>
+                    <Box
+                        sx={{
+                            width: '100vw',
+                            paddingTop: "4rem",
+                            flex: 1,
                             display: "flex",
                             flexDirection: "column",
-                            gap: isMobile ? ".8rem" : "1.5rem",
                             alignItems: "center",
-                            justifyContent: "center",
-                            width: "100%",
-                            maxWidth: isMobile ? "96vw" : "900px",
-                            padding: "20px"
+                            justifyContent: "flex-start",
+                            color: "#fff",
+                            overflowY: "auto",
+                            scrollbarWidth: "none",
+                            "&::-webkit-scrollbar": {
+                                display: "none",
+                            },
                         }}
                     >
-                        <div
+                        <Header />
+                        <MainTitle isMobile={isMobile}>Cadastrar Conteúdo</MainTitle>
+                        {/* Remova os botões do formulário */}
+                        <form
+                            onSubmit={handleSubmit}
                             style={{
                                 display: "flex",
-                                flexDirection: isMobile ? "column" : "row",
-                                gap: isMobile ? "1rem" : "2rem",
+                                flexDirection: "column",
+                                gap: isMobile ? ".8rem" : "1.5rem",
+                                alignItems: "center",
+                                justifyContent: "center",
                                 width: "100%",
-                                marginBottom: isMobile ? "0.8rem" : "1.5rem",
+                                maxWidth: isMobile ? "96vw" : "900px",
+                                padding: "20px"
                             }}
                         >
-                            <div style={{ flex: 1 }}>
-                                <LocationPicker
-                                    latitude={latitude}
-                                    longitude={longitude}
-                                    setLatitude={setLatitude}
-                                    setLongitude={setLongitude}
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexDirection: isMobile ? "column" : "row",
+                                    gap: isMobile ? "1rem" : "2rem",
+                                    width: "100%",
+                                    marginBottom: isMobile ? "0.8rem" : "1.5rem",
+                                }}
+                            >
+                                <div style={{ flex: 1 }}>
+                                    <LocationPicker
+                                        latitude={latitude}
+                                        longitude={longitude}
+                                        setLatitude={setLatitude}
+                                        setLongitude={setLongitude}
+                                    />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <select
+                                        value={marca}
+                                        onChange={e => setMarca(e.target.value)}
+                                        disabled={loadingMarcas || marcas.length === 0}
+                                        style={{ width: "100%", padding: "8px", fontSize: "1rem", borderRadius: "6px" }}
+                                    >
+                                        <option value="" disabled>Selecione uma marca</option>
+                                        {marcas.map(m => (
+                                            <option key={m.id} value={m.nome}>
+                                                {m.nome}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <TextField
+                                label="Texto"
+                                value={texto}
+                                onChange={e => setTexto(e.target.value)}
+                                multiline
+                                rows={4}
+                                fullWidth
+                                disabled={camposDesativados}
+                                sx={{
+                                    borderRadius: 2,
+                                    color: "#fff",
+                                    minHeight: "48px",
+                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
+                                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
+                                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
+                                    '& .MuiInputLabel-root': { color: '#fff' },
+                                    '& .MuiInputBase-input': { color: '#fff', minHeight: "48px", display: "flex", alignItems: "center" },
+                                }}
+                                slotProps={{
+                                    input: { style: { color: "#fff", minHeight: "48px", display: "flex", alignItems: "center" } }
+                                }}
+                                style={{ marginTop: 16, width: "100%" }}
+                            />
+                            <div style={{ width: "100%" }}>
+                                <UrlInputs
+                                    imagens={imagensInput}
+                                    setImagens={val => {
+                                        setImagensInput(val);
+                                    }}
+                                    videos={videos}
+                                    setVideos={setVideos}
+                                    disabled={camposDesativados}
                                 />
                             </div>
-                            <div style={{ flex: 1 }}>
-                                <select
-                                    value={marca}
-                                    onChange={e => setMarca(e.target.value)}
-                                    disabled={loadingMarcas || marcas.length === 0}
-                                    style={{ width: "100%", padding: "8px", fontSize: "1rem", borderRadius: "6px" }}
-                                >
-                                    <option value="" disabled>Selecione uma marca</option>
-                                    {marcas.map(m => (
-                                        <option key={m.id} value={m.nome}>
-                                            {m.nome}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <TextField
-                            label="Texto"
-                            value={texto}
-                            onChange={e => setTexto(e.target.value)}
-                            multiline
-                            rows={4}
-                            fullWidth
-                            disabled={camposDesativados}
-                            sx={{
-                                borderRadius: 2,
-                                color: "#fff",
-                                minHeight: "48px",
-                                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                '& .MuiInputLabel-root': { color: '#fff' },
-                                '& .MuiInputBase-input': { color: '#fff', minHeight: "48px", display: "flex", alignItems: "center" },
-                            }}
-                            slotProps={{
-                                input: { style: { color: "#fff", minHeight: "48px", display: "flex", alignItems: "center" } }
-                            }}
-                            style={{ marginTop: 16, width: "100%" }}
-                        />
-                        <div style={{ width: "100%" }}>
-                            <UrlInputs
-                                imagens={imagensInput}
-                                setImagens={val => {
-                                    setImagensInput(val);
-                                }}
-                                videos={videos}
-                                setVideos={setVideos}
-                                disabled={camposDesativados}
-                            />
-                        </div>
-                        <Copyright />
-                    </form>
-                    {!loadingMarcas && marcas.length === 0 && (
-                        <p style={{ marginTop: 16 }}>
-                            Nenhuma marca cadastrada. Cadastre uma marca para liberar o formulário.
-                        </p>
-                    )}
-                </Box>
-            </FadeIn>
+                            <Copyright />
+                        </form>
+                        {!loadingMarcas && marcas.length === 0 && (
+                            <p style={{ marginTop: 16 }}>
+                                Nenhuma marca cadastrada. Cadastre uma marca para liberar o formulário.
+                            </p>
+                        )}
+                    </Box>
+                </FadeIn>
+            </div>
         </div>
     );
 }
