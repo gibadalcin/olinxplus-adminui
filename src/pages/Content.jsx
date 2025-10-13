@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { TextField, Box } from "@mui/material";
 import Header from "../components/globalContext/Header";
@@ -6,10 +6,12 @@ import MainTitle from "../components/globalContext/MainTitle";
 import Copyright from "../components/globalContext/Copyright";
 import CustomButton from "../components/globalContext/CustomButton";
 import UrlInputs from "../components/globalContext/URLInputs";
-import { fetchMarcas, fetchImagesByOwner } from "../api";
+import { fetchImagesByOwner } from "../api";
 import { IoArrowBackOutline } from "react-icons/io5";
 import LocationPicker from "../components/contentContext/LocationPicker";
 import FadeIn from "../components/globalContext/FadeIn";
+import { useMarcas } from "../hooks/useMarcas"; // integração do hook
+import MarcaSelect from "../components/contentContext/MarcaSelect";
 
 export default function Content() {
     const location = useLocation();
@@ -17,7 +19,6 @@ export default function Content() {
     const ownerId = params.get("ownerId");
     const imageId = params.get("imageId");
 
-    // Adicione esta verificação:
     if (!ownerId) {
         return (
             <div style={{ color: "#fff", padding: "2rem" }}>
@@ -29,8 +30,6 @@ export default function Content() {
     }
 
     const [width, setWidth] = useState(768);
-    const [marca, setMarca] = useState("");
-    const [marcas, setMarcas] = useState([]);
     const [texto, setTexto] = useState("");
     const [imagens, setImagens] = useState([]);
     const [imagensInput, setImagensInput] = useState("");
@@ -38,10 +37,12 @@ export default function Content() {
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
     const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
-    const [loadingMarcas, setLoadingMarcas] = useState(true);
     const [loading, setLoading] = useState(false);
     const [showContent, setShowContent] = useState(false);
     const navigate = useNavigate();
+
+    // integração do hook useMarcas
+    const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
 
     useEffect(() => {
         function handleResize() {
@@ -50,36 +51,6 @@ export default function Content() {
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
-
-    const buscarMarcas = useCallback(async () => {
-        setLoadingMarcas(true);
-        try {
-            const user = window.auth?.currentUser;
-            if (!user) {
-                setMarcas([]);
-                setMarca("");
-                return;
-            }
-            const token = await user.getIdToken();
-            const idToFetch = ownerId || user.uid;
-            const lista = await fetchMarcas(idToFetch, token);
-            setMarcas(lista || []);
-            if (lista && lista.length > 0) {
-                setMarca(lista[0].nome);
-            } else {
-                setMarca("");
-            }
-        } catch {
-            setMarcas([]);
-            setMarca("");
-        } finally {
-            setLoadingMarcas(false);
-        }
-    }, [ownerId]);
-
-    useEffect(() => {
-        buscarMarcas();
-    }, [buscarMarcas, imageId]);
 
     useEffect(() => {
         setImagens([]);
@@ -248,7 +219,6 @@ export default function Content() {
                     >
                         <Header />
                         <MainTitle isMobile={isMobile}>Cadastrar Conteúdo</MainTitle>
-                        {/* Remova os botões do formulário */}
                         <form
                             onSubmit={handleSubmit}
                             style={{
@@ -280,19 +250,12 @@ export default function Content() {
                                     />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <select
-                                        value={marca}
-                                        onChange={e => setMarca(e.target.value)}
-                                        disabled={loadingMarcas || marcas.length === 0}
-                                        style={{ width: "100%", padding: "8px", fontSize: "1rem", borderRadius: "6px" }}
-                                    >
-                                        <option value="" disabled>Selecione uma marca</option>
-                                        {marcas.map(m => (
-                                            <option key={m.id} value={m.nome}>
-                                                {m.nome}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <MarcaSelect
+                                        marcas={marcas}
+                                        marca={marca}
+                                        setMarca={setMarca}
+                                        loadingMarcas={loadingMarcas}
+                                    />
                                 </div>
                             </div>
                             <TextField
