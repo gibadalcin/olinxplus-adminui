@@ -13,6 +13,7 @@ import { useMarcas } from "../hooks/useMarcas";
 import MarcaSelect from "../components/contentContext/MarcaSelect";
 import { useImagens } from "../hooks/useImages";
 import ContentActions from "../components/contentContext/ContentActions";
+import ContentBlockType from "../components/contentContext/ContentBlockType"; // import do novo componente
 
 export default function Content() {
     const location = useLocation();
@@ -35,14 +36,15 @@ export default function Content() {
     const [videos, setVideos] = useState("");
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
+    const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
+    const [blocos, setBlocos] = useState([]); // lista de blocos já criados
     const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
     const [showContent, setShowContent] = useState(false);
+    const [showModal, setShowModal] = useState(false);
+    const [nextMarca, setNextMarca] = useState(null);
     const navigate = useNavigate();
 
-    // Hook de marcas
     const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
-
-    // Hook de imagens
     const { imagens, setImagens, imagensInput, setImagensInput, loading: loadingImagens } = useImagens(ownerId, imageId);
 
     useEffect(() => {
@@ -66,6 +68,7 @@ export default function Content() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 nome_marca: marca,
+                tipo_bloco: tipoBloco,
                 texto,
                 imagens: Array.isArray(imagens) ? imagens : [],
                 videos: videos.split(",").map(v => v.trim()).filter(Boolean),
@@ -79,129 +82,338 @@ export default function Content() {
         setVideos("");
         setLatitude("");
         setLongitude("");
+        setTipoBloco("");
+        // Adiciona o novo bloco à lista para controle de sequência
+        setBlocos([...blocos, { tipo: tipoBloco }]);
     };
 
+    const [tipoSelecionado, setTipoSelecionado] = useState("");
+    const [conteudoBloco, setConteudoBloco] = useState("");
+
+    function getNextLabel(type) {
+        const count = blocos.filter(b => b.tipoSelecionado === type).length + 1;
+        switch (type) {
+            case "subtitulo":
+                return `Subtítulo ${count}`;
+            case "carousel":
+                return `Carousel ${count}`;
+            case "imagem":
+                return `Imagem topo ${count}`;
+            case "video":
+                return `Vídeo ${count}`;
+            case "titulo":
+                return `Título ${count}`;
+            default:
+                return type.charAt(0).toUpperCase() + type.slice(1);
+        }
+    }
+
+    const LIMITE_BLOCOS = 10; // exemplo
+
+    function handleAddBloco() {
+        if (!tipoSelecionado || !conteudoBloco.trim() || blocos.length >= LIMITE_BLOCOS) return;
+        const label = getNextLabel(tipoSelecionado);
+        const novoBloco = { tipo: label, conteudo: conteudoBloco, tipoSelecionado };
+        setBlocos([...blocos, novoBloco]);
+        setConteudoBloco("");
+        setTipoSelecionado("");
+        // Salvar no backend
+        fetch(`/api/conteudo/bloco`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ marca, ...novoBloco })
+        });
+    }
+
+    function handleChangeMarca(novaMarca) {
+        if (blocos.length > 0) {
+            setNextMarca(novaMarca);
+            setShowModal(true);
+        } else {
+            setMarca(novaMarca);
+        }
+    }
+
+    function handleConfirmTrocaMarca() {
+        setBlocos([]);
+        setMarca(nextMarca);
+        setShowModal(false);
+        setNextMarca(null);
+    }
+
+    function handleCancelTrocaMarca() {
+        setShowModal(false);
+        setNextMarca(null);
+    }
+
+    useEffect(() => {
+        if (marca) {
+            fetch(`/api/conteudo?marca=${encodeURIComponent(marca)}`)
+                .then(res => res.json())
+                .then(data => {
+                    setBlocos(data.blocos || []);
+                });
+        } else {
+            setBlocos([]);
+        }
+    }, [marca]);
+
+    function handleRemoveBloco(idx) {
+        const bloco = blocos[idx];
+        // Se bloco tem id, excluir no backend
+        if (bloco._id) {
+            fetch(`/api/conteudo/bloco/${bloco._id}`, { method: "DELETE" })
+                .then(() => setBlocos(blocos.filter((_, i) => i !== idx)));
+        } else {
+            setBlocos(blocos.filter((_, i) => i !== idx));
+        }
+    }
+
+    function handleEditBloco(idx, novoConteudo) {
+        const bloco = blocos[idx];
+        const novosBlocos = [...blocos];
+        novosBlocos[idx] = { ...bloco, conteudo: novoConteudo };
+        setBlocos(novosBlocos);
+        // Se bloco tem id, atualizar no backend
+        if (bloco._id) {
+            fetch(`/api/conteudo/bloco/${bloco._id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ conteudo: novoConteudo })
+            });
+        }
+    }
+
     return (
-        <div
-            style={{
-                minHeight: "100vh",
-                width: "100vw",
-                backgroundColor: "#012E57",
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                overflow: "hidden",
-            }}
-        >
-            {/* Ícone de voltar */}
-            <button
-                onClick={() => navigate("/images")}
+        <>
+            <div
                 style={{
-                    position: "fixed",
-                    top: 24,
-                    left: isMobile ? 8 : 32,
-                    zIndex: 10000,
-                    background: "none",
-                    border: "none",
-                    borderRadius: 0,
-                    width: "auto",
-                    height: "auto",
+                    minHeight: "100vh",
+                    width: "100vw",
+                    backgroundColor: "#012E57",
+                    position: "relative",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    boxShadow: "none",
-                    transition: "background 0.2s"
+                    justifyContent: "flex-start",
+                    overflow: "hidden",
                 }}
-                title="Voltar para gerenciamento de imagens"
             >
-                <IoArrowBackOutline size={isMobile ? 38 : 44} color="#ffffff" />
-            </button>
-            {/* Botões fixos no canto superior direito */}
-            <ContentActions
-                onSubmit={handleSubmit}
-                disabled={camposDesativados}
-            />
-            <div style={{
-                backgroundColor: "rgba(255,255,255,0.08)",
-                borderRadius: "12px",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-                border: "1px solid rgba(255,255,255,0.25)",
-                backdropFilter: "blur(18px)",
-                WebkitBackdropFilter: "blur(18px)",
-            }}>
-                <FadeIn show={showContent}>
-                    <Box
-                        sx={{
-                            width: '100vw',
-                            height: '100vh',
-                            paddingTop: "4rem",
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "flex-start",
-                            color: "#fff",
-                            overflowY: "auto",
-                            scrollbarWidth: "none",
-                            "&::-webkit-scrollbar": {
-                                display: "none",
-                            },
-                        }}
-                    >
-                        <Header />
-                        <MainTitle isMobile={isMobile}>Cadastrar Conteúdo</MainTitle>
-                        <form
-                            onSubmit={handleSubmit}
-                            style={{
+                {/* Ícone de voltar */}
+                <button
+                    onClick={() => navigate("/images")}
+                    style={{
+                        position: "fixed",
+                        top: 24,
+                        left: isMobile ? 8 : 32,
+                        zIndex: 10000,
+                        background: "none",
+                        border: "none",
+                        borderRadius: 0,
+                        width: "auto",
+                        height: "auto",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        boxShadow: "none",
+                        transition: "background 0.2s"
+                    }}
+                    title="Voltar para gerenciamento de imagens"
+                >
+                    <IoArrowBackOutline size={isMobile ? 38 : 44} color="#ffffff" />
+                </button>
+                {/* Botões fixos no canto superior direito */}
+                <ContentActions
+                    onSubmit={handleSubmit}
+                    disabled={camposDesativados}
+                />
+                <div style={{
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                    backdropFilter: "blur(18px)",
+                    WebkitBackdropFilter: "blur(18px)",
+                }}>
+                    <FadeIn show={showContent}>
+                        <Box
+                            sx={{
+                                width: '100vw',
+                                height: '100vh',
+                                paddingTop: "4rem",
+                                flex: 1,
                                 display: "flex",
                                 flexDirection: "column",
-                                gap: isMobile ? ".8rem" : "1.5rem",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                width: "100%",
-                                maxWidth: isMobile ? "96vw" : "900px",
-                                padding: "20px"
+                                justifyContent: "flex-start",
+                                color: "#fff",
+                                overflowY: "auto",
+                                scrollbarWidth: "none",
+                                "&::-webkit-scrollbar": {
+                                    display: "none",
+                                },
                             }}
                         >
-                            <div
+                            <Header />
+                            <MainTitle isMobile={isMobile}>Cadastrar Conteúdo</MainTitle>
+                            <form
+                                onSubmit={handleSubmit}
                                 style={{
                                     display: "flex",
-                                    flexDirection: isMobile ? "column" : "row",
-                                    gap: isMobile ? "1rem" : "2rem",
+                                    flexDirection: "column",
+                                    gap: isMobile ? ".8rem" : "1.5rem",
+                                    alignItems: "center",
+                                    justifyContent: "center",
                                     width: "100%",
-                                    marginBottom: isMobile ? "0.8rem" : "1.5rem",
+                                    maxWidth: isMobile ? "96vw" : "900px",
+                                    padding: "20px"
                                 }}
                             >
-                                <div style={{ flex: 1 }}>
-                                    <LocationPicker
-                                        latitude={latitude}
-                                        longitude={longitude}
-                                        setLatitude={setLatitude}
-                                        setLongitude={setLongitude}
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <MarcaSelect
-                                        marcas={marcas}
-                                        marca={marca}
-                                        setMarca={setMarca}
-                                        loadingMarcas={loadingMarcas}
-                                    />
-                                </div>
-                            </div>
-                            <Copyright />
-                        </form>
-                        {!loadingMarcas && marcas.length === 0 && (
-                            <p style={{ marginTop: 16 }}>
-                                Nenhuma marca cadastrada. Cadastre uma marca para liberar o formulário.
-                            </p>
-                        )}
-                    </Box>
-                </FadeIn>
+                                <LocationPicker
+                                    latitude={latitude}
+                                    longitude={longitude}
+                                    setLatitude={setLatitude}
+                                    setLongitude={setLongitude}
+                                />
+                                <ContentBlockType
+                                    tipoSelecionado={tipoSelecionado}
+                                    setTipoSelecionado={setTipoSelecionado}
+                                    conteudo={conteudoBloco}
+                                    setConteudo={setConteudoBloco}
+                                    disabled={camposDesativados || blocos.length >= LIMITE_BLOCOS}
+                                    blocos={blocos}
+                                    onRemoveBloco={handleRemoveBloco}
+                                    onEditBloco={handleEditBloco}
+                                />
+                                {tipoSelecionado && (
+                                    <div style={{ width: "100%", maxWidth: isMobile ? "96vw" : "900px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddBloco}
+                                            disabled={camposDesativados || !tipoSelecionado || !conteudoBloco.trim()}
+                                            style={{
+                                                padding: "8px 20px",
+                                                background: "#4cd964",
+                                                color: "#151515",
+                                                border: "none",
+                                                borderRadius: "6px",
+                                                fontWeight: "bold",
+                                                cursor: camposDesativados || !tipoSelecionado || !conteudoBloco.trim() ? "not-allowed" : "pointer",
+                                                marginBottom: "2rem",
+                                                marginTop: "-1rem"
+                                            }}
+                                        >
+                                            Inserir bloco
+                                        </button>
+                                    </div>
+                                )}
+                                <Copyright />
+                            </form>
+                        </Box>
+                    </FadeIn>
+                </div>
+                {/* Select fixo no canto inferior direito - FORA do Box/FadeIn */}
+                <div style={{
+                    position: "fixed",
+                    width: isMobile ? "90vw" : "100%",
+                    maxWidth: isMobile ? "90vw" : "240px",
+                    bottom: 24,
+                    right: 32,
+                    background: "rgba(255,255,255,0.10)",
+                    padding: "8px",
+                    boxShadow: "0 -2px 8px rgba(0,0,0,0.10)",
+                    borderRadius: "8px",
+                    zIndex: 9999,
+                    gap: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center"
+                }}>
+                    <MarcaSelect
+                        marcas={marcas}
+                        marca={marca}
+                        setMarca={handleChangeMarca}
+                        loadingMarcas={loadingMarcas}
+                    />
+                    <select
+                        value={tipoSelecionado}
+                        onChange={e => setTipoSelecionado(e.target.value)}
+                        disabled={camposDesativados}
+                        style={{
+                            width: isMobile ? "90vw" : "100%",
+                            maxWidth: isMobile ? "90vw" : "auto",
+                            padding: "8px",
+                            fontSize: "1rem",
+                            borderRadius: "6px"
+                        }}
+                    >
+                        <option value="" disabled>Selecione o tipo de bloco</option>
+                        <option value="titulo">Título</option>
+                        <option value="subtitulo">Subtítulo</option>
+                        <option value="texto">Texto</option>
+                        <option value="imagem">Imagem topo</option>
+                        <option value="video">Vídeo</option>
+                        <option value="carousel">Carousel (imagem/vídeo)</option>
+                        <option value="botao-destaque">Botão destaque</option>
+                        <option value="botao">Botão</option>
+                    </select>
+                </div>
             </div>
-        </div>
+            {showModal && (
+                <div style={{
+                    position: "fixed",
+                    top: 0, left: 0, width: "100vw", height: "100vh",
+                    background: "rgba(0,0,0,0.5)",
+                    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 99999
+                }}>
+                    <div style={{
+                        background: "#fff",
+                        borderRadius: "10px",
+                        padding: "2rem",
+                        boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+                        maxWidth: "400px",
+                        textAlign: "center"
+                    }}>
+                        <h3 style={{ marginBottom: "1rem" }}>Trocar marca?</h3>
+                        <p style={{ marginBottom: "2rem", color: "#333" }}>
+                            Você possui blocos não salvos. Ao trocar a marca, todo o conteúdo será perdido. Deseja continuar?
+                        </p>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <button
+                                onClick={handleCancelTrocaMarca}
+                                style={{
+                                    padding: "8px 20px",
+                                    background: "#ccc",
+                                    color: "#222",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    fontWeight: "bold",
+                                    marginRight: "1rem",
+                                    cursor: "pointer"
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleConfirmTrocaMarca}
+                                style={{
+                                    padding: "8px 20px",
+                                    background: "#e74c3c",
+                                    color: "#fff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer"
+                                }}
+                            >
+                                Trocar marca
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
