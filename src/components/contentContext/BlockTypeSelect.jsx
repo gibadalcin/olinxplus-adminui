@@ -1,6 +1,8 @@
 export default function BlockTypeSelect({ value, onChange, disabled, isMobile }) {
     return (
         <select
+            name="blockType"
+            id="block-type-select"
             value={value}
             onChange={onChange}
             disabled={disabled}

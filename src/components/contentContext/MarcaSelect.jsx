@@ -4,6 +4,8 @@ import React from "react";
 export default function MarcaSelect({ marcas, marca, setMarca, loadingMarcas }) {
     return (
         <select
+            name="marca"
+            id="marca-select"
             value={marca}
             onChange={e => setMarca(e.target.value)}
             disabled={loadingMarcas || marcas.length === 0}

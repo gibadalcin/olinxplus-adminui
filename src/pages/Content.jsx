@@ -64,20 +64,32 @@ export default function Content() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        await fetch(`/api/conteudo/${conteudoId || ""}`, {
-            method: conteudoId ? "PUT" : "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                nome_marca: marca,
-                blocos,
-                latitude: parseFloat(latitude),
-                longitude: parseFloat(longitude),
-            }),
-        });
-        alert("Conteúdo cadastrado!");
-        setLatitude("");
-        setLongitude("");
-        setTipoBloco("");
+        try {
+            const res = await fetch(`/api/conteudo/${conteudoId || ""}`, {
+                method: conteudoId ? "PUT" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    nome_marca: marca,
+                    blocos,
+                    latitude: parseFloat(latitude),
+                    longitude: parseFloat(longitude),
+                }),
+            });
+            const contentType = res.headers.get('content-type');
+            if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                const errorText = await res.text();
+                console.error('Erro ao cadastrar conteúdo:', { status: res.status, contentType, errorText });
+                alert('Erro ao cadastrar conteúdo!');
+                return;
+            }
+            alert("Conteúdo cadastrado!");
+            setLatitude("");
+            setLongitude("");
+            setTipoBloco("");
+        } catch (err) {
+            console.error('Erro inesperado ao cadastrar conteúdo:', err);
+            alert('Erro inesperado ao cadastrar conteúdo!');
+        }
     };
 
     const [tipoSelecionado, setTipoSelecionado] = useState("");
@@ -115,7 +127,17 @@ export default function Content() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ marca, ...novoBloco })
-        });
+        })
+            .then(async res => {
+                const contentType = res.headers.get('content-type');
+                if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                    const errorText = await res.text();
+                    console.error('Erro ao adicionar bloco:', { status: res.status, contentType, errorText });
+                }
+            })
+            .catch(err => {
+                console.error('Erro inesperado ao adicionar bloco:', err);
+            });
     }
 
     function handleChangeMarca(novaMarca) {
@@ -139,28 +161,64 @@ export default function Content() {
         setNextMarca(null);
     }
 
+    function handleRemoveBloco(idx) {
+        setBlocos(blocos.filter((_, i) => i !== idx));
+        // Se bloco tem id, pode adicionar chamada ao backend para deletar
+        const bloco = blocos[idx];
+        if (bloco && bloco._id) {
+            fetch(`/api/conteudo/bloco/${bloco._id}`, {
+                method: "DELETE"
+            })
+                .then(async res => {
+                    const contentType = res.headers.get('content-type');
+                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                        const errorText = await res.text();
+                        console.error('Erro ao remover bloco:', { status: res.status, contentType, errorText });
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro inesperado ao remover bloco:', err);
+                });
+        }
+    }
+
     useEffect(() => {
-        if (marca) {
-            fetch(`/api/conteudo?marca=${encodeURIComponent(marca)}`)
-                .then(res => res.json())
-                .then(data => {
-                    setBlocos(data.blocos || []);
+        // Removido fetch antigo que usava apenas 'marca'.
+        // O fetch principal abaixo já garante os parâmetros corretos.
+        if (!(marca && latitude && longitude)) {
+            setBlocos([]);
+            return;
+        }
+        if (marca && latitude && longitude) {
+            const url = `/api/conteudo?nome_marca=${encodeURIComponent(marca)}&latitude=${latitude}&longitude=${longitude}`;
+            console.log('Buscando blocos na URL:', url);
+            fetch(url)
+                .then(async res => {
+                    const contentType = res.headers.get('content-type');
+                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                        const errorText = await res.text();
+                        console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
+                        setBlocos([]);
+                        return;
+                    }
+                    const data = await res.json();
+                    // Se não houver conteúdo, mostra tela vazia sem erro
+                    if (!data || !data.conteudo) {
+                        setBlocos([]);
+                    } else if (Array.isArray(data.conteudo)) {
+                        setBlocos(data.conteudo);
+                    } else {
+                        setBlocos([data.conteudo]);
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro inesperado ao buscar blocos:', err, url);
+                    setBlocos([]);
                 });
         } else {
             setBlocos([]);
         }
-    }, [marca]);
-
-    function handleRemoveBloco(idx) {
-        const bloco = blocos[idx];
-        // Se bloco tem id, excluir no backend
-        if (bloco._id) {
-            fetch(`/api/conteudo/bloco/${bloco._id}`, { method: "DELETE" })
-                .then(() => setBlocos(blocos.filter((_, i) => i !== idx)));
-        } else {
-            setBlocos(blocos.filter((_, i) => i !== idx));
-        }
-    }
+    }, [marca, latitude, longitude]);
 
     function handleEditBloco(idx, novoConteudo) {
         const bloco = blocos[idx];
@@ -173,7 +231,17 @@ export default function Content() {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ conteudo: novoConteudo })
-            });
+            })
+                .then(async res => {
+                    const contentType = res.headers.get('content-type');
+                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                        const errorText = await res.text();
+                        console.error('Erro ao editar bloco:', { status: res.status, contentType, errorText });
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro inesperado ao editar bloco:', err);
+                });
         }
     }
 
