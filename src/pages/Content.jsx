@@ -6,12 +6,13 @@ import MainTitle from "../components/globalContext/MainTitle";
 import Copyright from "../components/globalContext/Copyright";
 import CustomButton from "../components/globalContext/CustomButton";
 import UrlInputs from "../components/globalContext/URLInputs";
-import { fetchImagesByOwner } from "../api";
 import { IoArrowBackOutline } from "react-icons/io5";
 import LocationPicker from "../components/contentContext/LocationPicker";
 import FadeIn from "../components/globalContext/FadeIn";
-import { useMarcas } from "../hooks/useMarcas"; // integração do hook
+import { useMarcas } from "../hooks/useMarcas";
 import MarcaSelect from "../components/contentContext/MarcaSelect";
+import { useImagens } from "../hooks/useImages";
+import ContentActions from "../components/contentContext/ContentActions";
 
 export default function Content() {
     const location = useLocation();
@@ -31,18 +32,18 @@ export default function Content() {
 
     const [width, setWidth] = useState(768);
     const [texto, setTexto] = useState("");
-    const [imagens, setImagens] = useState([]);
-    const [imagensInput, setImagensInput] = useState("");
     const [videos, setVideos] = useState("");
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
     const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
-    const [loading, setLoading] = useState(false);
     const [showContent, setShowContent] = useState(false);
     const navigate = useNavigate();
 
-    // integração do hook useMarcas
+    // Hook de marcas
     const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
+
+    // Hook de imagens
+    const { imagens, setImagens, imagensInput, setImagensInput, loading: loadingImagens } = useImagens(ownerId, imageId);
 
     useEffect(() => {
         function handleResize() {
@@ -51,44 +52,6 @@ export default function Content() {
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
-
-    useEffect(() => {
-        setImagens([]);
-        setImagensInput("");
-        async function buscarImagens() {
-            setLoading(true);
-            try {
-                const user = window.auth?.currentUser;
-                if (!user) {
-                    setImagens([]);
-                    setImagensInput("");
-                    return;
-                }
-                const token = await user.getIdToken();
-                let imagensArray = [];
-                if (ownerId) {
-                    const imgs = await fetchImagesByOwner(ownerId, token);
-                    imagensArray = imgs.map(img => img.url);
-                } else {
-                    const imgs = await fetchImagesByOwner(user.uid, token);
-                    imagensArray = imgs.map(img => img.url);
-                }
-                setImagens(imagensArray);
-                const nomes = imagensArray.map(url => {
-                    try {
-                        const urlObj = new URL(url);
-                        return urlObj.pathname.split('/').pop();
-                    } catch {
-                        return url;
-                    }
-                });
-                setImagensInput(nomes.join(", "));
-            } finally {
-                setLoading(false);
-            }
-        }
-        buscarImagens();
-    }, [ownerId, imageId]);
 
     useEffect(() => {
         setTimeout(() => setShowContent(true), 400);
@@ -157,40 +120,10 @@ export default function Content() {
                 <IoArrowBackOutline size={isMobile ? 38 : 44} color="#ffffff" />
             </button>
             {/* Botões fixos no canto superior direito */}
-            <div style={{
-                position: "fixed",
-                top: 24,
-                right: 32,
-                zIndex: 10001,
-                display: "flex",
-                flexDirection: "column",
-                gap: "12px"
-            }}>
-                <CustomButton
-                    type="button"
-                    onClick={() => navigate("/dashboard")}
-                    style={{
-                        background: "#012E57",
-                        color: "#fff",
-                        textShadow: "0 1px 4px rgba(255,255,255,0.15)",
-                        border: "1px solid rgba(255,255,255,0.90)",
-                    }}
-                >
-                    Dashboard
-                </CustomButton>
-                <CustomButton
-                    type="submit"
-                    onClick={handleSubmit}
-                    disabled={camposDesativados}
-                    style={{
-                        background: "#4cd964",
-                        color: "#151515",
-                        textShadow: "2px 2px 4px rgba(0,0,0,0.15)",
-                        border: "1px solid rgba(255,255,255,0.90)",
-                    }}>
-                    Salvar
-                </CustomButton>
-            </div>
+            <ContentActions
+                onSubmit={handleSubmit}
+                disabled={camposDesativados}
+            />
             <div style={{
                 backgroundColor: "rgba(255,255,255,0.08)",
                 borderRadius: "12px",
@@ -203,6 +136,7 @@ export default function Content() {
                     <Box
                         sx={{
                             width: '100vw',
+                            height: '100vh',
                             paddingTop: "4rem",
                             flex: 1,
                             display: "flex",
@@ -257,40 +191,6 @@ export default function Content() {
                                         loadingMarcas={loadingMarcas}
                                     />
                                 </div>
-                            </div>
-                            <TextField
-                                label="Texto"
-                                value={texto}
-                                onChange={e => setTexto(e.target.value)}
-                                multiline
-                                rows={4}
-                                fullWidth
-                                disabled={camposDesativados}
-                                sx={{
-                                    borderRadius: 2,
-                                    color: "#fff",
-                                    minHeight: "48px",
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
-                                    '& .MuiInputLabel-root': { color: '#fff' },
-                                    '& .MuiInputBase-input': { color: '#fff', minHeight: "48px", display: "flex", alignItems: "center" },
-                                }}
-                                slotProps={{
-                                    input: { style: { color: "#fff", minHeight: "48px", display: "flex", alignItems: "center" } }
-                                }}
-                                style={{ marginTop: 16, width: "100%" }}
-                            />
-                            <div style={{ width: "100%" }}>
-                                <UrlInputs
-                                    imagens={imagensInput}
-                                    setImagens={val => {
-                                        setImagensInput(val);
-                                    }}
-                                    videos={videos}
-                                    setVideos={setVideos}
-                                    disabled={camposDesativados}
-                                />
                             </div>
                             <Copyright />
                         </form>
