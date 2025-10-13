@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { TextField, Box } from "@mui/material";
+import { Box } from "@mui/material";
 import Header from "../components/globalContext/Header";
 import MainTitle from "../components/globalContext/MainTitle";
 import Copyright from "../components/globalContext/Copyright";
 import CustomButton from "../components/globalContext/CustomButton";
-import UrlInputs from "../components/globalContext/URLInputs";
 import { IoArrowBackOutline } from "react-icons/io5";
 import LocationPicker from "../components/contentContext/LocationPicker";
 import FadeIn from "../components/globalContext/FadeIn";
 import { useMarcas } from "../hooks/useMarcas";
-import MarcaSelect from "../components/contentContext/MarcaSelect";
 import { useImagens } from "../hooks/useImages";
 import ContentActions from "../components/contentContext/ContentActions";
 import ContentBlockType from "../components/contentContext/ContentBlockType"; // import do novo componente
+import ConfirmModal from "../components/globalContext/ConfirmModal";
+import BlockTypeSelect from "../components/contentContext/BlockTypeSelect";
+import MarcaSelect from "../components/contentContext/MarcaSelect";
 
 export default function Content() {
     const location = useLocation();
@@ -316,20 +317,17 @@ export default function Content() {
                 {/* Select fixo no canto inferior direito - FORA do Box/FadeIn */}
                 <div style={{
                     position: "fixed",
-                    width: isMobile ? "90vw" : "100%",
-                    maxWidth: isMobile ? "90vw" : "240px",
+                    width: isMobile ? "90vw" : "240px",
+                    gap: "1rem",
+                    display: "flex",
+                    flexDirection: "column",
                     bottom: 24,
                     right: 32,
                     background: "rgba(255,255,255,0.10)",
                     padding: "8px",
                     boxShadow: "0 -2px 8px rgba(0,0,0,0.10)",
                     borderRadius: "8px",
-                    zIndex: 9999,
-                    gap: "8px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center"
+                    zIndex: 9999
                 }}>
                     <MarcaSelect
                         marcas={marcas}
@@ -337,83 +335,19 @@ export default function Content() {
                         setMarca={handleChangeMarca}
                         loadingMarcas={loadingMarcas}
                     />
-                    <select
+                    <BlockTypeSelect
                         value={tipoSelecionado}
                         onChange={e => setTipoSelecionado(e.target.value)}
                         disabled={camposDesativados}
-                        style={{
-                            width: isMobile ? "90vw" : "100%",
-                            maxWidth: isMobile ? "90vw" : "auto",
-                            padding: "8px",
-                            fontSize: "1rem",
-                            borderRadius: "6px"
-                        }}
-                    >
-                        <option value="" disabled>Selecione o tipo de bloco</option>
-                        <option value="titulo">Título</option>
-                        <option value="subtitulo">Subtítulo</option>
-                        <option value="texto">Texto</option>
-                        <option value="imagem">Imagem topo</option>
-                        <option value="video">Vídeo</option>
-                        <option value="carousel">Carousel (imagem/vídeo)</option>
-                        <option value="botao-destaque">Botão destaque</option>
-                        <option value="botao">Botão</option>
-                    </select>
+                        isMobile={isMobile}
+                    />
                 </div>
             </div>
-            {showModal && (
-                <div style={{
-                    position: "fixed",
-                    top: 0, left: 0, width: "100vw", height: "100vh",
-                    background: "rgba(0,0,0,0.5)",
-                    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 99999
-                }}>
-                    <div style={{
-                        background: "#fff",
-                        borderRadius: "10px",
-                        padding: "2rem",
-                        boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
-                        maxWidth: "400px",
-                        textAlign: "center"
-                    }}>
-                        <h3 style={{ marginBottom: "1rem" }}>Trocar marca?</h3>
-                        <p style={{ marginBottom: "2rem", color: "#333" }}>
-                            Você possui blocos não salvos. Ao trocar a marca, todo o conteúdo será perdido. Deseja continuar?
-                        </p>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <button
-                                onClick={handleCancelTrocaMarca}
-                                style={{
-                                    padding: "8px 20px",
-                                    background: "#ccc",
-                                    color: "#222",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    fontWeight: "bold",
-                                    marginRight: "1rem",
-                                    cursor: "pointer"
-                                }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleConfirmTrocaMarca}
-                                style={{
-                                    padding: "8px 20px",
-                                    background: "#e74c3c",
-                                    color: "#fff",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    fontWeight: "bold",
-                                    cursor: "pointer"
-                                }}
-                            >
-                                Trocar marca
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConfirmModal
+                open={showModal}
+                onConfirm={handleConfirmTrocaMarca}
+                onCancel={handleCancelTrocaMarca}
+            />
         </>
     );
 }
