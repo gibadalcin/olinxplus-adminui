@@ -64,28 +64,20 @@ export default function Content() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        await fetch("/api/conteudo", {
-            method: "POST",
+        await fetch(`/api/conteudo/${conteudoId || ""}`, {
+            method: conteudoId ? "PUT" : "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 nome_marca: marca,
-                tipo_bloco: tipoBloco,
-                texto,
-                imagens: Array.isArray(imagens) ? imagens : [],
-                videos: videos.split(",").map(v => v.trim()).filter(Boolean),
+                blocos,
                 latitude: parseFloat(latitude),
                 longitude: parseFloat(longitude),
             }),
         });
         alert("Conteúdo cadastrado!");
-        setTexto("");
-        setImagens([]);
-        setVideos("");
         setLatitude("");
         setLongitude("");
         setTipoBloco("");
-        // Adiciona o novo bloco à lista para controle de sequência
-        setBlocos([...blocos, { tipo: tipoBloco }]);
     };
 
     const [tipoSelecionado, setTipoSelecionado] = useState("");
@@ -227,7 +219,12 @@ export default function Content() {
                 {/* Botões fixos no canto superior direito */}
                 <ContentActions
                     onSubmit={handleSubmit}
-                    disabled={camposDesativados}
+                    disabled={
+                        !marca ||
+                        !latitude ||
+                        !longitude ||
+                        camposDesativados
+                    }
                 />
                 <div style={{
                     backgroundColor: "rgba(255,255,255,0.08)",

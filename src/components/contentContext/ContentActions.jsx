@@ -26,12 +26,18 @@ export default function ContentActions({ onSubmit, disabled }) {
                 Dashboard
             </CustomButton>
             <CustomButton
-                type="submit"
-                onClick={onSubmit}
+                type="button"
+                onClick={e => {
+                    if (!disabled) {
+                        onSubmit(e);
+                    } else {
+                        e.preventDefault();
+                    }
+                }}
                 disabled={disabled}
                 style={{
-                    background: "#4cd964",
-                    color: "#151515",
+                    background: disabled ? "#bdbdbd" : "#4cd964",
+                    color: disabled ? "#888" : "#151515",
                     textShadow: "2px 2px 4px rgba(0,0,0,0.15)",
                     border: "1px solid rgba(255,255,255,0.90)",
                 }}>
