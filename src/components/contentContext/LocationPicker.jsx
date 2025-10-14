@@ -1,16 +1,49 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { TextField, Button } from "@mui/material";
 
-export default function LocationPicker({ latitude, longitude, setLatitude, setLongitude }) {
-    const [address, setAddress] = useState("");
+export default function LocationPicker({ latitude, longitude, setLatitude, setLongitude, tipoRegiao, setTipoRegiao, nomeRegiao, setNomeRegiao }) {
+    const [width, setWidth] = useState(768);
+    // Se vier do parent, usa o estado do parent, senão local
+    // Se vier do parent, usa o estado do parent, senão local
+    const isControlled = typeof nomeRegiao !== "undefined" && typeof setNomeRegiao === "function";
+    const [address, setAddressState] = useState("");
+    const setAddress = isControlled ? setNomeRegiao : setAddressState;
+    const addressValue = isControlled ? nomeRegiao : address;
+    const [tipoRegiaoState, setTipoRegiaoState] = typeof tipoRegiao !== "undefined" && typeof setTipoRegiao === "function" ? [tipoRegiao, setTipoRegiao] : useState("");
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
+    const addressInputRef = useRef(null);
+
+    useEffect(() => {
+        function handleResize() {
+            setIsMobile(window.innerWidth <= width);
+        }
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+
+    async function buscarNomeRegiao(lat, lon, tipoRegiao) {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        const data = await res.json();
+        const address = data.address || {};
+        let nome = "";
+        if (tipoRegiao === "rua") nome = address.road || "";
+        else if (tipoRegiao === "bairro") nome = address.suburb || address.neighbourhood || "";
+        else if (tipoRegiao === "cidade") nome = address.city || address.town || address.village || "";
+        else if (tipoRegiao === "estado") nome = address.state || "";
+        else if (tipoRegiao === "pais") nome = address.country || "";
+        return nome;
+    }
 
     function LocationMarker() {
         useMapEvents({
-            click(e) {
-                setLatitude(e.latlng.lat.toFixed(6));
-                setLongitude(e.latlng.lng.toFixed(6));
+            click: async (e) => {
+                setLatitude(e.latlng.lat);
+                setLongitude(e.latlng.lng);
+                const nome = await buscarNomeRegiao(e.latlng.lat, e.latlng.lng, tipoRegiaoState);
+                setAddress(nome);
             }
         });
         return latitude && longitude ? (
@@ -33,13 +66,45 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
 
     return (
         <div style={{ width: "100%" }}>
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            <div style={{
+                display: "flex",
+                width: "100%",
+                gap: ".6rem",
+                marginBottom: "0.5rem",
+                flexDirection: isMobile ? "column" : "row"
+            }}>
+                <select
+                    value={tipoRegiaoState}
+                    onChange={e => {
+                        setTipoRegiaoState(e.target.value);
+                        setTimeout(() => {
+                            if (addressInputRef.current) addressInputRef.current.focus();
+                        }, 0);
+                    }}
+                    style={{
+                        background: '#ffffff',
+                        color: '#000',
+                        height: "56px",
+                        padding: '8px 16px',
+                        borderRadius: "4px",
+                        height: isMobile ? "42px" : "56px",
+                    }}
+                >
+                    <option value="">Tipo de região</option>
+                    <option value="rua">Rua</option>
+                    <option value="bairro">Bairro</option>
+                    <option value="cidade">Cidade</option>
+                    <option value="estado">Estado</option>
+                    <option value="pais">País</option>
+                </select>
                 <TextField
-                    label="Endereço ou local"
+                    label="Nome da região"
                     variant="outlined"
-                    value={address}
+                    value={addressValue}
                     onChange={e => setAddress(e.target.value)}
+                    name="address"
                     fullWidth
+                    inputRef={addressInputRef}
                     sx={{
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff !important' },
                         '& .MuiInputLabel-root': { color: '#fff' },
@@ -47,6 +112,26 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     }}
                     slotProps={{ style: { color: "#fff" } }}
                 />
+
+                <Button
+                    type="button"
+                    onClick={() => {
+                        setLatitude("");
+                        setLongitude("");
+                        setAddress("");
+                        setTipoRegiaoState("");
+                        const addressInput = document.querySelector('input[name="address"]');
+                        if (addressInput) addressInput.value = "";
+                    }}
+                    style={{
+                        background: '#f44336',
+                        color: '#fff',
+                        height: "56px",
+                        padding: '8px 16px',
+                    }}
+                >
+                    Limpar
+                </Button>
                 <Button
                     variant="contained"
                     onClick={handleSearch}
@@ -59,9 +144,9 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     Buscar
                 </Button>
             </div>
-            <div style={{ height: "220px", width: "100%", marginBottom: "0.5rem" }}>
+            <div style={{ height: "350px", width: "100%", marginBottom: "0.5rem" }}>
                 <MapContainer
-                    center={[latitude || -15.7801, longitude || -47.9292]}
+                    center={[latitude || -29.168291, longitude || -51.179366]}
                     zoom={latitude && longitude ? 15 : 4}
                     style={{ height: "100%", width: "100%" }}
                 >
@@ -71,7 +156,7 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     <LocationMarker />
                 </MapContainer>
             </div>
-            <div style={{ display: "flex", gap: "1rem" }}>
+            <div style={{ display: "flex", width: "100%", gap: "1rem" }}>
                 <TextField
                     label="Latitude"
                     variant="outlined"
@@ -99,6 +184,7 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     slotProps={{ style: { color: "#fff" } }}
                 />
             </div>
+            {/* Para integração, exporte tipoRegiao e address como tipo_regiao e nome_regiao */}
         </div>
     );
 }

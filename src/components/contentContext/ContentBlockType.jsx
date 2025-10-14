@@ -8,7 +8,8 @@ export default function ContentBlockType({
     disabled,
     blocos,
     onRemoveBloco,
-    onEditBloco
+    onEditBloco,
+    onAddBloco
 }) {
     const inputRef = useRef(null);
 
@@ -122,6 +123,47 @@ export default function ContentBlockType({
             )}
             {/* Campo de conteúdo aparece acima do rodapé */}
             {tipoSelecionado && renderConteudoInput()}
+            {tipoSelecionado && !disabled && (
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setConteudo("");
+                            setTipoSelecionado("");
+                        }}
+                        style={{
+                            background: "#e74c3c",
+                            color: "#fff",
+                            textShadow: "0 1px 1px rgba(0,0,0,0.2)",
+                            border: "none",
+                            borderRadius: "4px",
+                            padding: "10px 18px",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            fontSize: "1rem"
+                        }}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onAddBloco}
+                        style={{
+                            background: "#4cd964",
+                            color: "#fff",
+                            textShadow: "0 1px 1px rgba(0,0,0,0.2)",
+                            border: "none",
+                            borderRadius: "4px",
+                            padding: "10px 18px",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            fontSize: "1rem"
+                        }}
+                    >
+                        Adicionar bloco
+                    </button>
+                </div>
+            )}
         </>
     );
 }

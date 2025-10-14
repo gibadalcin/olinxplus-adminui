@@ -37,6 +37,8 @@ export default function Content() {
     const [videos, setVideos] = useState("");
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
+    const [tipoRegiao, setTipoRegiao] = useState("");
+    const [nomeRegiao, setNomeRegiao] = useState("");
     const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
     const [blocos, setBlocos] = useState([]); // lista de blocos já criados
     const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
@@ -65,14 +67,16 @@ export default function Content() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch(`/api/conteudo/${conteudoId || ""}`, {
-                method: conteudoId ? "PUT" : "POST",
+            const res = await fetch(`/api/conteudo`, {
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     nome_marca: marca,
                     blocos,
                     latitude: parseFloat(latitude),
                     longitude: parseFloat(longitude),
+                    tipo_regiao: tipoRegiao,
+                    nome_regiao: nomeRegiao,
                 }),
             });
             const contentType = res.headers.get('content-type');
@@ -122,22 +126,6 @@ export default function Content() {
         setBlocos([...blocos, novoBloco]);
         setConteudoBloco("");
         setTipoSelecionado("");
-        // Salvar no backend
-        fetch(`/api/conteudo/bloco`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ marca, ...novoBloco })
-        })
-            .then(async res => {
-                const contentType = res.headers.get('content-type');
-                if (!res.ok || !contentType || !contentType.includes('application/json')) {
-                    const errorText = await res.text();
-                    console.error('Erro ao adicionar bloco:', { status: res.status, contentType, errorText });
-                }
-            })
-            .catch(err => {
-                console.error('Erro inesperado ao adicionar bloco:', err);
-            });
     }
 
     function handleChangeMarca(novaMarca) {
@@ -154,6 +142,9 @@ export default function Content() {
         setMarca(nextMarca);
         setShowModal(false);
         setNextMarca(null);
+        // Desativa o botão de salvar (camposDesativados = true)
+        // Se o botão depende de blocos.length > 0, já estará desativado
+        // Se depende de outro estado, pode adicionar um estado extra
     }
 
     function handleCancelTrocaMarca() {
@@ -291,7 +282,8 @@ export default function Content() {
                         !marca ||
                         !latitude ||
                         !longitude ||
-                        camposDesativados
+                        camposDesativados ||
+                        blocos.length === 0
                     }
                 />
                 <div style={{
@@ -331,17 +323,28 @@ export default function Content() {
                                     gap: isMobile ? ".8rem" : "1.5rem",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    width: "100%",
-                                    maxWidth: isMobile ? "96vw" : "900px",
+                                    maxWidth: isMobile ? "96vw" : "auto",
                                     padding: "20px"
                                 }}
                             >
-                                <LocationPicker
-                                    latitude={latitude}
-                                    longitude={longitude}
-                                    setLatitude={setLatitude}
-                                    setLongitude={setLongitude}
-                                />
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    width: isMobile ? '100%' : 'auto',
+                                    minWidth: isMobile ? 'auto' : '800px',
+                                }}>
+                                    <LocationPicker
+                                        latitude={latitude}
+                                        longitude={longitude}
+                                        setLatitude={setLatitude}
+                                        setLongitude={setLongitude}
+                                        tipoRegiao={tipoRegiao}
+                                        setTipoRegiao={setTipoRegiao}
+                                        nomeRegiao={nomeRegiao}
+                                        setNomeRegiao={setNomeRegiao}
+                                    />
+                                </div>
                                 <ContentBlockType
                                     tipoSelecionado={tipoSelecionado}
                                     setTipoSelecionado={setTipoSelecionado}
@@ -351,29 +354,8 @@ export default function Content() {
                                     blocos={blocos}
                                     onRemoveBloco={handleRemoveBloco}
                                     onEditBloco={handleEditBloco}
+                                    onAddBloco={handleAddBloco}
                                 />
-                                {tipoSelecionado && (
-                                    <div style={{ width: "100%", maxWidth: isMobile ? "96vw" : "900px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                                        <button
-                                            type="button"
-                                            onClick={handleAddBloco}
-                                            disabled={camposDesativados || !tipoSelecionado || !conteudoBloco.trim()}
-                                            style={{
-                                                padding: "8px 20px",
-                                                background: "#4cd964",
-                                                color: "#151515",
-                                                border: "none",
-                                                borderRadius: "6px",
-                                                fontWeight: "bold",
-                                                cursor: camposDesativados || !tipoSelecionado || !conteudoBloco.trim() ? "not-allowed" : "pointer",
-                                                marginBottom: "2rem",
-                                                marginTop: "-1rem"
-                                            }}
-                                        >
-                                            Inserir bloco
-                                        </button>
-                                    </div>
-                                )}
                                 <Copyright />
                             </form>
                         </Box>
