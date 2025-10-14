@@ -87,8 +87,12 @@ export default function Content() {
                 return;
             }
             alert("Conteúdo cadastrado!");
+            // Limpa todos os campos após salvar para evitar confusão
             setLatitude("");
             setLongitude("");
+            setNomeRegiao("");
+            setTipoRegiao("");
+            setBlocos([]);
             setTipoBloco("");
         } catch (err) {
             console.error('Erro inesperado ao cadastrar conteúdo:', err);
@@ -129,6 +133,7 @@ export default function Content() {
     }
 
     function handleChangeMarca(novaMarca) {
+        // Modal deve aparecer se houver blocos em edição, mesmo se tipoRegiao ou nomeRegiao estiverem preenchidos
         if (blocos.length > 0) {
             setNextMarca(novaMarca);
             setShowModal(true);
