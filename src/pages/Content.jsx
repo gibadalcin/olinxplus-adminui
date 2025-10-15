@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert from '@mui/material/Alert';
 import { useNavigate, useLocation } from "react-router-dom";
 import { Box } from "@mui/material";
 import Header from "../components/globalContext/Header";
@@ -89,6 +91,13 @@ export default function Content() {
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
     const [tipoRegiao, setTipoRegiao] = useState("");
+
+    // Limpa blocos ao trocar tipo de local
+    function handleChangeTipoRegiao(novoTipo) {
+        setTipoRegiao(novoTipo);
+        setBlocos([]);
+        setBlocosOriginais([]);
+    }
     const [nomeRegiao, setNomeRegiao] = useState("");
     const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
     const {
@@ -104,13 +113,22 @@ export default function Content() {
         getNextLabel,
         resetBlocos,
     } = useBlocos(10);
-    const [showContent, setShowContent] = useState(false);
-    const [showModal, setShowModal] = useState(false);
     const [nextMarca, setNextMarca] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+    const [showContent, setShowContent] = useState(false);
     const navigate = useNavigate();
-
     const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
     const { imagens, setImagens, imagensInput, setImagensInput, loading: loadingImagens } = useImagens(ownerId, imageId);
+
+    // Lógica para cor/texto do botão principal (depois de marca)
+    let botaoCor = "#4cd964"; // verde padrão
+    let botaoTexto = "Salvar";
+    if (
+        blocos.length === 0 && blocosOriginais.length > 0 && marca && latitude && longitude && tipoRegiao && nomeRegiao
+    ) {
+        botaoCor = "#ff3b30"; // vermelho para exclusão
+        botaoTexto = "Excluir";
+    }
 
     useEffect(() => {
         function handleResize() {
@@ -126,18 +144,28 @@ export default function Content() {
 
     const camposDesativados = !marca;
 
+    // Snackbar para feedback profissional
+    const [snackbarOpen, setSnackbarOpen] = useState(false);
+    const [snackbarMsg, setSnackbarMsg] = useState("");
+    const [snackbarSeverity, setSnackbarSeverity] = useState("success");
+
+    const handleSnackbarClose = (event, reason) => {
+        if (reason === 'clickaway') return;
+        setSnackbarOpen(false);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        // Só salva se houve alteração
         if (blocosIguais(blocos, blocosOriginais)) {
-            alert("Nenhuma alteração detectada nos blocos. Nada foi salvo.");
+            setSnackbarMsg("Nenhuma alteração detectada nos blocos. Nada foi salvo.");
+            setSnackbarSeverity("info");
+            setSnackbarOpen(true);
             return;
         }
         try {
-            // Filtra blocos para garantir que só vão 'tipo' e 'conteudo'
             const blocosLimpos = blocos.map(({ tipo, conteudo }) => ({ tipo, conteudo }));
             const payload = {
-                nome_marca: marca, // <-- CORRETO para o backend
+                nome_marca: marca,
                 blocos: blocosLimpos,
                 latitude: parseFloat(latitude),
                 longitude: parseFloat(longitude),
@@ -153,11 +181,24 @@ export default function Content() {
             if (!res.ok || !contentType || !contentType.includes('application/json')) {
                 const errorText = await res.text();
                 console.error('Erro ao cadastrar conteúdo:', { status: res.status, contentType, errorText, payload });
-                alert('Erro ao cadastrar conteúdo!');
+                setSnackbarMsg('Erro ao cadastrar conteúdo!');
+                setSnackbarSeverity("error");
+                setSnackbarOpen(true);
                 return;
             }
-            alert("Conteúdo cadastrado!");
-            // Limpa todos os campos após salvar para evitar confusão
+            const data = await res.json();
+            if (data.action === "deleted") {
+                setSnackbarMsg("Conteúdo excluído com sucesso!");
+                setSnackbarSeverity("error"); // vermelho para exclusão
+            } else if (data.action === "saved") {
+                setSnackbarMsg("Conteúdo salvo com sucesso!");
+                setSnackbarSeverity("success");
+            } else {
+                setSnackbarMsg("Operação realizada!");
+                setSnackbarSeverity("success");
+            }
+            setSnackbarOpen(true);
+            // Limpa todos os campos após salvar/excluir para evitar confusão
             setLatitude("");
             setLongitude("");
             setNomeRegiao("");
@@ -166,7 +207,9 @@ export default function Content() {
             setTipoBloco("");
         } catch (err) {
             console.error('Erro inesperado ao cadastrar conteúdo:', err);
-            alert('Erro inesperado ao cadastrar conteúdo!');
+            setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
+            setSnackbarSeverity("error");
+            setSnackbarOpen(true);
         }
     };
 
@@ -198,46 +241,39 @@ export default function Content() {
     useEffect(() => {
         // Removido fetch antigo que usava apenas 'marca'.
         // O fetch principal abaixo já garante os parâmetros corretos.
-        if (!(marca && latitude && longitude)) {
+        if (!(marca && tipoRegiao && nomeRegiao)) {
             setBlocos([]);
             setBlocosOriginais([]);
             return;
         }
-        if (marca && latitude && longitude) {
-            const url = `/api/conteudo?nome_marca=${encodeURIComponent(marca)}&latitude=${latitude}&longitude=${longitude}`;
-            console.log('Buscando blocos na URL:', url);
-            fetch(url)
-                .then(async res => {
-                    const contentType = res.headers.get('content-type');
-                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
-                        const errorText = await res.text();
-                        console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
-                        setBlocos([]);
-                        setBlocosOriginais([]);
-                        return;
-                    }
-                    const data = await res.json();
-                    if (!data || !data.conteudo) {
-                        setBlocos([]);
-                        setBlocosOriginais([]);
-                    } else if (Array.isArray(data.conteudo)) {
-                        setBlocos(data.conteudo);
-                        setBlocosOriginais(data.conteudo);
-                    } else {
-                        setBlocos([data.conteudo]);
-                        setBlocosOriginais([data.conteudo]);
-                    }
-                })
-                .catch(err => {
-                    console.error('Erro inesperado ao buscar blocos:', err, url);
+        // Busca sempre considerando tipoRegiao
+    const url = `/api/conteudo-por-regiao?nome_marca=${encodeURIComponent(marca)}&tipo_regiao=${encodeURIComponent(tipoRegiao)}&nome_regiao=${encodeURIComponent(nomeRegiao)}`;
+        console.log('Buscando blocos na URL:', url);
+        fetch(url)
+            .then(async res => {
+                const contentType = res.headers.get('content-type');
+                if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                    const errorText = await res.text();
+                    console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
                     setBlocos([]);
                     setBlocosOriginais([]);
-                });
-        } else {
-            setBlocos([]);
-            setBlocosOriginais([]);
-        }
-    }, [marca, latitude, longitude]);
+                    return;
+                }
+                const data = await res.json();
+                if (!data || !Array.isArray(data.blocos)) {
+                    setBlocos([]);
+                    setBlocosOriginais([]);
+                } else {
+                    setBlocos(data.blocos);
+                    setBlocosOriginais(data.blocos);
+                }
+            })
+            .catch(err => {
+                console.error('Erro inesperado ao buscar blocos:', err, url);
+                setBlocos([]);
+                setBlocosOriginais([]);
+            });
+    }, [marca, latitude, longitude, tipoRegiao, nomeRegiao]);
 
     const inputRef = useRef(null);
 
@@ -341,7 +377,7 @@ export default function Content() {
                                         setLatitude={setLatitude}
                                         setLongitude={setLongitude}
                                         tipoRegiao={tipoRegiao}
-                                        setTipoRegiao={setTipoRegiao}
+                                        setTipoRegiao={handleChangeTipoRegiao}
                                         nomeRegiao={nomeRegiao}
                                         setNomeRegiao={setNomeRegiao}
                                     />
@@ -435,9 +471,14 @@ export default function Content() {
                             !longitude ||
                             !tipoRegiao ||
                             !nomeRegiao ||
-                            blocos.length === 0 ||
-                            blocos.some(b => !b.tipo || !b.conteudo)
+                            (
+                                (blocos.length === 0 && blocosOriginais.length === 0) ||
+                                (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
+                                blocos.some(b => !b.tipo || !b.conteudo)
+                            )
                         }
+                        color={botaoCor}
+                        label={botaoTexto}
                     />
                     {/* Botão dashboard e salvar podem ser adicionados aqui se existirem como componentes */}
                 </div>
@@ -447,6 +488,22 @@ export default function Content() {
                 onConfirm={handleConfirmTrocaMarca}
                 onCancel={handleCancelTrocaMarca}
             />
+            <Snackbar
+                open={snackbarOpen}
+                autoHideDuration={3500}
+                onClose={handleSnackbarClose}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <MuiAlert
+                    elevation={6}
+                    variant="filled"
+                    onClose={handleSnackbarClose}
+                    severity={snackbarSeverity}
+                    sx={{ width: '100%' }}
+                >
+                    {snackbarMsg}
+                </MuiAlert>
+            </Snackbar>
         </>
     );
 }

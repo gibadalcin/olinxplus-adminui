@@ -1,7 +1,7 @@
 import CustomButton from "../globalContext/CustomButton";
 import { useNavigate } from "react-router-dom";
 
-export default function ContentActions({ onSubmit, disabled }) {
+export default function ContentActions({ onSubmit, disabled, color = "#4cd964", label = "Salvar" }) {
     const navigate = useNavigate();
     return (
         <div style={{
@@ -34,12 +34,12 @@ export default function ContentActions({ onSubmit, disabled }) {
                 }}
                 disabled={disabled}
                 style={{
-                    background: disabled ? "#bdbdbd" : "#4cd964",
-                    color: disabled ? "#888" : "#151515",
+                    background: disabled ? "#bdbdbd" : color,
+                    color: disabled ? "#888" : (color === "#ff3b30" ? "#fff" : "#151515"),
                     textShadow: "2px 2px 4px rgba(0,0,0,0.15)",
                     border: "1px solid rgba(255,255,255,0.90)",
                 }}>
-                Salvar
+                {label}
             </CustomButton>
         </div>
     );
