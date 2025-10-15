@@ -6,7 +6,6 @@ import { TextField, Button } from "@mui/material";
 export default function LocationPicker({ latitude, longitude, setLatitude, setLongitude, tipoRegiao, setTipoRegiao, nomeRegiao, setNomeRegiao }) {
     const [width, setWidth] = useState(768);
     // Se vier do parent, usa o estado do parent, senão local
-    // Se vier do parent, usa o estado do parent, senão local
     const isControlled = typeof nomeRegiao !== "undefined" && typeof setNomeRegiao === "function";
     const [address, setAddressState] = useState("");
     const setAddress = isControlled ? setNomeRegiao : setAddressState;
@@ -27,7 +26,7 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
 
 
     async function buscarNomeRegiao(lat, lon, tipoRegiao) {
-        const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reverse-geocode?lat=${lat}&lon=${lon}`);
         const data = await res.json();
         const address = data || {};
         let nome = "";
@@ -95,7 +94,6 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                         background: tipoRegiaoWarning ? '#fffbe6' : '#ffffff',
                         color: '#000',
                         border: tipoRegiaoWarning ? '2px solid #ff9800' : undefined,
-                        height: "56px",
                         padding: '8px 16px',
                         borderRadius: "4px",
                         height: isMobile ? "42px" : "56px",

@@ -138,11 +138,9 @@ export default function ImageManager() {
     formData.append("name", nome);
 
     try {
-      const response = await uploadLogo(formData, token);
-
-      if (!response.ok) {
-        const data = await response.json();
-        if (response.status === 400 && data.detail?.includes("imagem com esse nome")) {
+      const result = await uploadLogo(formData, token);
+      if (!result.success) {
+        if (result.detail && result.detail.includes("imagem com esse nome")) {
           alert("Já existe uma imagem com esse nome!");
         } else {
           alert("Erro ao enviar imagem.");

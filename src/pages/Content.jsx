@@ -172,7 +172,7 @@ export default function Content() {
                 tipo_regiao: tipoRegiao,
                 nome_regiao: nomeRegiao,
             };
-            const res = await fetch(`/api/conteudo`, {
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -213,8 +213,6 @@ export default function Content() {
         }
     };
 
-    const LIMITE_BLOCOS = 10;
-
     function handleChangeMarca(novaMarca) {
         // Modal deve aparecer se houver blocos em edição, mesmo se tipoRegiao ou nomeRegiao estiverem preenchidos
         if (blocos.length > 0) {
@@ -238,16 +236,20 @@ export default function Content() {
         setNextMarca(null);
     }
 
+    const lastUrlRef = useRef("");
     useEffect(() => {
-        // Removido fetch antigo que usava apenas 'marca'.
-        // O fetch principal abaixo já garante os parâmetros corretos.
         if (!(marca && tipoRegiao && nomeRegiao)) {
             setBlocos([]);
             setBlocosOriginais([]);
+            lastUrlRef.current = "";
             return;
         }
-        // Busca sempre considerando tipoRegiao
-    const url = `/api/conteudo-por-regiao?nome_marca=${encodeURIComponent(marca)}&tipo_regiao=${encodeURIComponent(tipoRegiao)}&nome_regiao=${encodeURIComponent(nomeRegiao)}`;
+        const url = `${import.meta.env.VITE_API_BASE_URL}/api/conteudo-por-regiao?nome_marca=${encodeURIComponent(marca)}&tipo_regiao=${encodeURIComponent(tipoRegiao)}&nome_regiao=${encodeURIComponent(nomeRegiao)}`;
+        if (lastUrlRef.current === url) {
+            // Evita fetch duplicado
+            return;
+        }
+        lastUrlRef.current = url;
         console.log('Buscando blocos na URL:', url);
         fetch(url)
             .then(async res => {
