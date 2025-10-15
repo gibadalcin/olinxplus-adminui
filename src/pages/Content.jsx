@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Box } from "@mui/material";
 import Header from "../components/globalContext/Header";
@@ -15,8 +15,57 @@ import ContentBlockType from "../components/contentContext/ContentBlockType"; //
 import ConfirmModal from "../components/globalContext/ConfirmModal";
 import BlockTypeSelect from "../components/contentContext/BlockTypeSelect";
 import MarcaSelect from "../components/contentContext/MarcaSelect";
+import { useBlocos } from "../hooks/useBlocos";
 
 export default function Content() {
+    // Drag para mobile
+    const dragOffset = useRef({ x: 0, y: 0 });
+    function handleDragStart(e) {
+        // Permite drag tanto no mobile quanto no desktop
+        const isTouch = e.type === 'touchstart';
+        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+        const rect = dragRef.current?.getBoundingClientRect();
+        dragOffset.current = {
+            x: clientX - (rect?.left || window.innerWidth / 2),
+            y: clientY - (rect?.top || (isMobile ? window.innerHeight * 0.86 : window.innerHeight * 0.10))
+        };
+        document.addEventListener(isTouch ? 'touchmove' : 'mousemove', handleDragMove, { passive: false });
+        document.addEventListener(isTouch ? 'touchend' : 'mouseup', handleDragEnd);
+    }
+    function handleDragMove(e) {
+        e.preventDefault();
+        const isTouch = e.type === 'touchmove';
+        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+
+        if (isMobile) {
+            setDragPos({
+                left: `${clientX - dragOffset.current.x}px`,
+                bottom: `${window.innerHeight - clientY - 10}px`
+            });
+        } else {
+            setDragPos({
+                top: `${clientY - dragOffset.current.y}px`,
+                right: `${window.innerWidth - clientX - 32}px`
+            });
+        }
+    }
+    function handleDragEnd(e) {
+        const isTouch = e.type === 'touchend';
+        document.removeEventListener(isTouch ? 'touchmove' : 'mousemove', handleDragMove);
+        document.removeEventListener(isTouch ? 'touchend' : 'mouseup', handleDragEnd);
+    }
+    // Estado para posição do grupo arrastável no mobile
+    const [dragPos, setDragPos] = useState({ bottom: '2%', left: '50%' });
+    const dragRef = useRef(null);
+    // Função para comparar blocos
+    function blocosIguais(a, b) {
+        if (a.length !== b.length) return false;
+        return a.every((bloco, i) =>
+            bloco.tipo === b[i]?.tipo && bloco.conteudo === b[i]?.conteudo
+        );
+    }
     const location = useLocation();
     const params = new URLSearchParams(location.search);
     const ownerId = params.get("ownerId");
@@ -33,6 +82,8 @@ export default function Content() {
     }
 
     const [width, setWidth] = useState(768);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
+    const [blocosOriginais, setBlocosOriginais] = useState([]);
     const [texto, setTexto] = useState("");
     const [videos, setVideos] = useState("");
     const [latitude, setLatitude] = useState("");
@@ -40,8 +91,19 @@ export default function Content() {
     const [tipoRegiao, setTipoRegiao] = useState("");
     const [nomeRegiao, setNomeRegiao] = useState("");
     const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
-    const [blocos, setBlocos] = useState([]); // lista de blocos já criados
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
+    const {
+        blocos,
+        setBlocos,
+        tipoSelecionado,
+        setTipoSelecionado,
+        conteudoBloco,
+        setConteudoBloco,
+        handleAddBloco,
+        handleRemoveBloco,
+        handleEditBloco,
+        getNextLabel,
+        resetBlocos,
+    } = useBlocos(10);
     const [showContent, setShowContent] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [nextMarca, setNextMarca] = useState(null);
@@ -66,23 +128,31 @@ export default function Content() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        // Só salva se houve alteração
+        if (blocosIguais(blocos, blocosOriginais)) {
+            alert("Nenhuma alteração detectada nos blocos. Nada foi salvo.");
+            return;
+        }
         try {
+            // Filtra blocos para garantir que só vão 'tipo' e 'conteudo'
+            const blocosLimpos = blocos.map(({ tipo, conteudo }) => ({ tipo, conteudo }));
+            const payload = {
+                nome_marca: marca, // <-- CORRETO para o backend
+                blocos: blocosLimpos,
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude),
+                tipo_regiao: tipoRegiao,
+                nome_regiao: nomeRegiao,
+            };
             const res = await fetch(`/api/conteudo`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    nome_marca: marca,
-                    blocos,
-                    latitude: parseFloat(latitude),
-                    longitude: parseFloat(longitude),
-                    tipo_regiao: tipoRegiao,
-                    nome_regiao: nomeRegiao,
-                }),
+                body: JSON.stringify(payload),
             });
             const contentType = res.headers.get('content-type');
             if (!res.ok || !contentType || !contentType.includes('application/json')) {
                 const errorText = await res.text();
-                console.error('Erro ao cadastrar conteúdo:', { status: res.status, contentType, errorText });
+                console.error('Erro ao cadastrar conteúdo:', { status: res.status, contentType, errorText, payload });
                 alert('Erro ao cadastrar conteúdo!');
                 return;
             }
@@ -100,37 +170,7 @@ export default function Content() {
         }
     };
 
-    const [tipoSelecionado, setTipoSelecionado] = useState("");
-    const [conteudoBloco, setConteudoBloco] = useState("");
-
-    function getNextLabel(type) {
-        const count = blocos.filter(b => b.tipoSelecionado === type).length + 1;
-        switch (type) {
-            case "subtitulo":
-                return `Subtítulo ${count}`;
-            case "carousel":
-                return `Carousel ${count}`;
-            case "imagem":
-                return `Imagem topo ${count}`;
-            case "video":
-                return `Vídeo ${count}`;
-            case "titulo":
-                return `Título ${count}`;
-            default:
-                return type.charAt(0).toUpperCase() + type.slice(1);
-        }
-    }
-
-    const LIMITE_BLOCOS = 10; // exemplo
-
-    function handleAddBloco() {
-        if (!tipoSelecionado || !conteudoBloco.trim() || blocos.length >= LIMITE_BLOCOS) return;
-        const label = getNextLabel(tipoSelecionado);
-        const novoBloco = { tipo: label, conteudo: conteudoBloco, tipoSelecionado };
-        setBlocos([...blocos, novoBloco]);
-        setConteudoBloco("");
-        setTipoSelecionado("");
-    }
+    const LIMITE_BLOCOS = 10;
 
     function handleChangeMarca(novaMarca) {
         // Modal deve aparecer se houver blocos em edição, mesmo se tipoRegiao ou nomeRegiao estiverem preenchidos
@@ -147,9 +187,7 @@ export default function Content() {
         setMarca(nextMarca);
         setShowModal(false);
         setNextMarca(null);
-        // Desativa o botão de salvar (camposDesativados = true)
-        // Se o botão depende de blocos.length > 0, já estará desativado
-        // Se depende de outro estado, pode adicionar um estado extra
+        resetBlocos();
     }
 
     function handleCancelTrocaMarca() {
@@ -157,32 +195,12 @@ export default function Content() {
         setNextMarca(null);
     }
 
-    function handleRemoveBloco(idx) {
-        setBlocos(blocos.filter((_, i) => i !== idx));
-        // Se bloco tem id, pode adicionar chamada ao backend para deletar
-        const bloco = blocos[idx];
-        if (bloco && bloco._id) {
-            fetch(`/api/conteudo/bloco/${bloco._id}`, {
-                method: "DELETE"
-            })
-                .then(async res => {
-                    const contentType = res.headers.get('content-type');
-                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
-                        const errorText = await res.text();
-                        console.error('Erro ao remover bloco:', { status: res.status, contentType, errorText });
-                    }
-                })
-                .catch(err => {
-                    console.error('Erro inesperado ao remover bloco:', err);
-                });
-        }
-    }
-
     useEffect(() => {
         // Removido fetch antigo que usava apenas 'marca'.
         // O fetch principal abaixo já garante os parâmetros corretos.
         if (!(marca && latitude && longitude)) {
             setBlocos([]);
+            setBlocosOriginais([]);
             return;
         }
         if (marca && latitude && longitude) {
@@ -195,51 +213,39 @@ export default function Content() {
                         const errorText = await res.text();
                         console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
                         setBlocos([]);
+                        setBlocosOriginais([]);
                         return;
                     }
                     const data = await res.json();
-                    // Se não houver conteúdo, mostra tela vazia sem erro
                     if (!data || !data.conteudo) {
                         setBlocos([]);
+                        setBlocosOriginais([]);
                     } else if (Array.isArray(data.conteudo)) {
                         setBlocos(data.conteudo);
+                        setBlocosOriginais(data.conteudo);
                     } else {
                         setBlocos([data.conteudo]);
+                        setBlocosOriginais([data.conteudo]);
                     }
                 })
                 .catch(err => {
                     console.error('Erro inesperado ao buscar blocos:', err, url);
                     setBlocos([]);
+                    setBlocosOriginais([]);
                 });
         } else {
             setBlocos([]);
+            setBlocosOriginais([]);
         }
     }, [marca, latitude, longitude]);
 
-    function handleEditBloco(idx, novoConteudo) {
-        const bloco = blocos[idx];
-        const novosBlocos = [...blocos];
-        novosBlocos[idx] = { ...bloco, conteudo: novoConteudo };
-        setBlocos(novosBlocos);
-        // Se bloco tem id, atualizar no backend
-        if (bloco._id) {
-            fetch(`/api/conteudo/bloco/${bloco._id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ conteudo: novoConteudo })
-            })
-                .then(async res => {
-                    const contentType = res.headers.get('content-type');
-                    if (!res.ok || !contentType || !contentType.includes('application/json')) {
-                        const errorText = await res.text();
-                        console.error('Erro ao editar bloco:', { status: res.status, contentType, errorText });
-                    }
-                })
-                .catch(err => {
-                    console.error('Erro inesperado ao editar bloco:', err);
-                });
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (showModal && inputRef.current) {
+            inputRef.current.focus();
         }
-    }
+    }, [showModal, tipoSelecionado]);
 
     return (
         <>
@@ -280,17 +286,7 @@ export default function Content() {
                 >
                     <IoArrowBackOutline size={isMobile ? 38 : 44} color="#ffffff" />
                 </button>
-                {/* Botões fixos no canto superior direito */}
-                <ContentActions
-                    onSubmit={handleSubmit}
-                    disabled={
-                        !marca ||
-                        !latitude ||
-                        !longitude ||
-                        camposDesativados ||
-                        blocos.length === 0
-                    }
-                />
+
                 <div style={{
                     backgroundColor: "rgba(255,255,255,0.08)",
                     borderRadius: "12px",
@@ -355,10 +351,14 @@ export default function Content() {
                                     setTipoSelecionado={setTipoSelecionado}
                                     conteudo={conteudoBloco}
                                     setConteudo={setConteudoBloco}
-                                    disabled={camposDesativados || blocos.length >= LIMITE_BLOCOS}
+                                    disabled={camposDesativados || blocos.length >= 10}
                                     blocos={blocos}
                                     onRemoveBloco={handleRemoveBloco}
-                                    onEditBloco={handleEditBloco}
+                                    onEditBloco={(idx, tipo, conteudo) => {
+                                        setBlocos(prev =>
+                                            prev.map((b, i) => i === idx ? { tipo, conteudo } : b)
+                                        );
+                                    }}
                                     onAddBloco={handleAddBloco}
                                 />
                                 <Copyright />
@@ -366,21 +366,54 @@ export default function Content() {
                         </Box>
                     </FadeIn>
                 </div>
-                {/* Select fixo no canto inferior direito - FORA do Box/FadeIn */}
-                <div style={{
-                    position: "fixed",
-                    width: isMobile ? "90vw" : "240px",
-                    gap: "1rem",
-                    display: "flex",
-                    flexDirection: "column",
-                    bottom: 24,
-                    right: 32,
-                    background: "rgba(255,255,255,0.10)",
-                    padding: "8px",
-                    boxShadow: "0 -2px 8px rgba(0,0,0,0.10)",
-                    borderRadius: "8px",
-                    zIndex: 9999
-                }}>
+                {/* Controles alinhados à direita no desktop, layout original no mobile */}
+                <div
+                    ref={dragRef}
+                    style={{
+                        position: 'fixed',
+                        ...(isMobile
+                            ? {
+                                bottom: dragPos.bottom || undefined,
+                                left: dragPos.left || undefined,
+                                transform: "translateX(-50%)",
+                            }
+                            : {
+                                top: dragPos.top || "10%",
+                                right: dragPos.right || "5%",
+                            }
+                        ),
+                        width: "240px",
+                        gap: "1rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        background: "rgba(255,255,255,0.28)",
+                        padding: "8px",
+                        boxShadow: "0 2px 16px rgba(0,0,0,0.10)",
+                        borderRadius: "8px",
+                        zIndex: 9999,
+                        touchAction: 'none',
+                        cursor: 'grab'
+                    }}
+                >
+                    <div
+                        style={{
+                            width: '100%',
+                            height: '22px',
+                            background: 'rgba(0,0,0,0.18)',
+                            borderRadius: '6px',
+                            marginBottom: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'grab',
+                            userSelect: 'none',
+                        }}
+                        onMouseDown={handleDragStart}
+                        onTouchStart={handleDragStart}
+                        title="Arraste por aqui"
+                    >
+                        <span style={{ color: '#fff', fontSize: 16, opacity: 0.7 }}>≡</span>
+                    </div>
                     <MarcaSelect
                         marcas={marcas}
                         marca={marca}
@@ -390,9 +423,23 @@ export default function Content() {
                     <BlockTypeSelect
                         value={tipoSelecionado}
                         onChange={e => setTipoSelecionado(e.target.value)}
-                        disabled={camposDesativados}
+                        disabled={camposDesativados || !tipoRegiao || !nomeRegiao}
                         isMobile={isMobile}
                     />
+                    {/* Botões fixos no canto superior direito */}
+                    <ContentActions
+                        onSubmit={handleSubmit}
+                        disabled={
+                            !marca ||
+                            !latitude ||
+                            !longitude ||
+                            !tipoRegiao ||
+                            !nomeRegiao ||
+                            blocos.length === 0 ||
+                            blocos.some(b => !b.tipo || !b.conteudo)
+                        }
+                    />
+                    {/* Botão dashboard e salvar podem ser adicionados aqui se existirem como componentes */}
                 </div>
             </div>
             <ConfirmModal

@@ -7,7 +7,7 @@ export default function BlockTypeSelect({ value, onChange, disabled, isMobile })
             onChange={onChange}
             disabled={disabled}
             style={{
-                width: isMobile ? "90vw" : "240px",
+                width: "240px",
                 padding: "8px",
                 fontSize: "1rem",
                 borderRadius: "6px"

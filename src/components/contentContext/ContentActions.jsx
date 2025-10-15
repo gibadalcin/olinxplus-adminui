@@ -5,13 +5,11 @@ export default function ContentActions({ onSubmit, disabled }) {
     const navigate = useNavigate();
     return (
         <div style={{
-            position: "fixed",
-            top: 24,
-            right: 32,
             zIndex: 10001,
             display: "flex",
             flexDirection: "column",
-            gap: "12px"
+            gap: "12px",
+            width: "240px"
         }}>
             <CustomButton
                 type="button"

@@ -12,6 +12,8 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
     const setAddress = isControlled ? setNomeRegiao : setAddressState;
     const addressValue = isControlled ? nomeRegiao : address;
     const [tipoRegiaoState, setTipoRegiaoState] = typeof tipoRegiao !== "undefined" && typeof setTipoRegiao === "function" ? [tipoRegiao, setTipoRegiao] : useState("");
+    const tipoRegiaoSelectRef = useRef(null);
+    const [tipoRegiaoWarning, setTipoRegiaoWarning] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
     const addressInputRef = useRef(null);
 
@@ -25,9 +27,9 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
 
 
     async function buscarNomeRegiao(lat, lon, tipoRegiao) {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
         const data = await res.json();
-        const address = data.address || {};
+        const address = data || {};
         let nome = "";
         if (tipoRegiao === "rua") nome = address.road || "";
         else if (tipoRegiao === "bairro") nome = address.suburb || address.neighbourhood || "";
@@ -40,6 +42,12 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
     function LocationMarker() {
         useMapEvents({
             click: async (e) => {
+                if (!tipoRegiaoState) {
+                    setTipoRegiaoWarning(true);
+                    if (tipoRegiaoSelectRef.current) tipoRegiaoSelectRef.current.focus();
+                    return;
+                }
+                setTipoRegiaoWarning(false);
                 setLatitude(e.latlng.lat);
                 setLongitude(e.latlng.lng);
                 const nome = await buscarNomeRegiao(e.latlng.lat, e.latlng.lng, tipoRegiaoState);
@@ -74,16 +82,19 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                 flexDirection: isMobile ? "column" : "row"
             }}>
                 <select
+                    ref={tipoRegiaoSelectRef}
                     value={tipoRegiaoState}
                     onChange={e => {
                         setTipoRegiaoState(e.target.value);
+                        setTipoRegiaoWarning(false);
                         setTimeout(() => {
                             if (addressInputRef.current) addressInputRef.current.focus();
                         }, 0);
                     }}
                     style={{
-                        background: '#ffffff',
+                        background: tipoRegiaoWarning ? '#fffbe6' : '#ffffff',
                         color: '#000',
+                        border: tipoRegiaoWarning ? '2px solid #ff9800' : undefined,
                         height: "56px",
                         padding: '8px 16px',
                         borderRadius: "4px",
@@ -97,6 +108,11 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     <option value="estado">Estado</option>
                     <option value="pais">País</option>
                 </select>
+                {tipoRegiaoWarning && (
+                    <span style={{ color: '#ff9800', fontSize: '0.95rem', marginLeft: 4 }}>
+                        Selecione o tipo de região antes de clicar no mapa
+                    </span>
+                )}
                 <TextField
                     label="Nome da região"
                     variant="outlined"
