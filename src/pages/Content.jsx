@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { getAuth } from "firebase/auth";
+import { uploadContentImage } from "../api";
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
 import { useNavigate, useLocation } from "react-router-dom";
@@ -165,7 +167,60 @@ export default function Content() {
             return;
         }
         try {
+            // Primeiro: enviar ao backend todos os arquivos pendentes (pendingFile) que foram carregados localmente
+            const user = getAuth().currentUser;
+            let token = null;
+            if (user) token = await user.getIdToken();
+            const updatedBlocos = [...blocos];
+            for (let i = 0; i < updatedBlocos.length; i++) {
+                const b = updatedBlocos[i];
+                if (b && b.pendingFile) {
+                    try {
+                        const formData = new FormData();
+                        formData.append("file", b.pendingFile);
+                        formData.append("name", b.pendingFile.name);
+                        formData.append("subtipo", b.subtipo || "");
+                        formData.append("marca", marca || "");
+                        formData.append("tipo_regiao", tipoRegiao || "");
+                        formData.append("nome_regiao", nomeRegiao || "");
+                        const result = await uploadContentImage(formData, token);
+                        if (result && result.success) {
+                            const serverBloco = result.bloco || {};
+                            // atualiza o bloco com os metadados retornados pelo servidor
+                            updatedBlocos[i] = {
+                                ...b,
+                                url: serverBloco.url || result.url || b.url,
+                                nome: serverBloco.nome || b.nome || serverBloco.name || "",
+                                filename: serverBloco.filename || b.filename || "",
+                                type: serverBloco.type || b.type || "",
+                                created_at: serverBloco.created_at || b.created_at || new Date().toISOString(),
+                            };
+                            // remove pendingFile
+                            delete updatedBlocos[i].pendingFile;
+                        } else {
+                            console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor', result);
+                            // decide: continuar e enviar sem esse arquivo, ou abortar
+                            // vamos abortar o salvamento para evitar inconsistências
+                            setSnackbarMsg('Falha ao enviar arquivos de imagem. Tente novamente.');
+                            setSnackbarSeverity('error');
+                            setSnackbarOpen(true);
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('[handleSubmit] Erro ao enviar arquivo pendente:', err);
+                        setSnackbarMsg('Erro ao enviar arquivos de imagem.');
+                        setSnackbarSeverity('error');
+                        setSnackbarOpen(true);
+                        return;
+                    }
+                }
+            }
+            // grava blocos atualizados no estado antes de montar o payload
+            setBlocos(updatedBlocos);
+
             const blocosLimpos = blocos.map(b => {
+                // use os blocos atualizados (se setBlocos ainda não refletiu, prefer updatedBlocos)
+                const bb = updatedBlocos && updatedBlocos.length === blocos.length ? updatedBlocos[blocos.indexOf(b)] : b;
                 const url = b.url || b.conteudo || "";
                 // Garante nomes exatos esperados pelo backend
                 let nome = b.nome || b.name || "";

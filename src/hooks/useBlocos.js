@@ -25,7 +25,14 @@ export function useBlocos(limite = 10) {
   }
 
   function handleAddBloco(tipo, conteudo, subtipo, meta) {
-    if (!tipo || !conteudo || !String(conteudo).trim() || blocos.length >= limite) return;
+    if (!tipo || blocos.length >= limite) return;
+    // para imagens, permita adicionar mesmo sem 'conteudo' quando houver um arquivo pendente (upload adiado)
+    if (tipo === 'imagem') {
+      const hasImageSource = (conteudo && String(conteudo).trim()) || (meta && meta.pendingFile);
+      if (!hasImageSource) return;
+    } else {
+      if (!conteudo || !String(conteudo).trim()) return;
+    }
     const label = getNextLabel(tipo);
     let novoBloco;
     if (tipo === "imagem") {
@@ -46,8 +53,8 @@ export function useBlocos(limite = 10) {
         novoBloco = blocoFromServer;
       } else {
       // usa metadados do upload quando disponíveis, senão extrai da URL
-      const nome = (meta && meta.nome) || (conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
-      const filename = (meta && meta.filename) || (conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
+      const nome = (meta && meta.nome) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
+      const filename = (meta && meta.filename) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
       const type = (meta && meta.type) || "image/png";
       const created_at = (meta && meta.created_at) || new Date().toISOString();
       novoBloco = {
@@ -55,19 +62,24 @@ export function useBlocos(limite = 10) {
         conteudo,
         tipoSelecionado: tipo,
         subtipo: subtipo ?? "",
-        url: conteudo,
+        // se houver meta.url (objectUrl de preview) use-a para mostrar preview local
+        url: (meta && meta.url) || conteudo,
         nome,
         filename,
         type,
-        created_at
+        created_at,
+        // se houver meta com pendingFile, mantenha para upload posterior
+        pendingFile: meta && meta.pendingFile ? meta.pendingFile : undefined
       };
       }
     } else {
       novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
     }
+    console.debug('[useBlocos] adicionando bloco:', novoBloco);
     setBlocos([...blocos, novoBloco]);
     setConteudoBloco("");
     setTipoSelecionado("");
+    return novoBloco;
   }
 
   function handleRemoveBloco(idx) {
@@ -93,8 +105,8 @@ export function useBlocos(limite = 10) {
           created_at: meta.created_at || meta.createdAt || bloco.created_at || new Date().toISOString(),
         };
       } else {
-      const nome = (meta && meta.nome) || bloco.nome || (conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
-      const filename = (meta && meta.filename) || bloco.filename || (conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
+      const nome = (meta && meta.nome) || bloco.nome || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
+      const filename = (meta && meta.filename) || bloco.filename || (conteudo && conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
       const type = (meta && meta.type) || bloco.type || "image/png";
       const created_at = (meta && meta.created_at) || bloco.created_at || new Date().toISOString();
       novosBlocos[idx] = {
@@ -102,7 +114,8 @@ export function useBlocos(limite = 10) {
         tipoSelecionado: tipo,
         conteudo,
         subtipo: subtipo ?? "",
-        url: conteudo,
+        // use meta.url (preview) quando disponível
+        url: (meta && meta.url) || conteudo,
         nome,
         filename,
         type,
