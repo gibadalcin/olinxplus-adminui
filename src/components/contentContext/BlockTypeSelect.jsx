@@ -18,7 +18,6 @@ export default function BlockTypeSelect({ value, onChange, disabled, isMobile })
             <option value="subtitulo">Subtítulo</option>
             <option value="texto">Texto</option>
             <option value="imagem">Imagem</option>
-            <option value="video">Vídeo</option>
             <option value="carousel">Carousel (imagem/vídeo)</option>
             <option value="botao-destaque">Botão destaque</option>
             <option value="botao">Botão</option>

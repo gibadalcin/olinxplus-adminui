@@ -30,6 +30,10 @@ export function useBlocos(limite = 10) {
     if (tipo === 'imagem') {
       const hasImageSource = (conteudo && String(conteudo).trim()) || (meta && meta.pendingFile);
       if (!hasImageSource) return;
+    } else if (tipo === 'carousel') {
+      // aceita carousel quando meta.items estiver presente e pelo menos um item tem url/pendingFile
+      const items = meta && meta.items;
+      if (!items || !Array.isArray(items) || !items.some(it => (it && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== ''))))) return;
     } else {
       if (!conteudo || !String(conteudo).trim()) return;
     }
@@ -72,6 +76,23 @@ export function useBlocos(limite = 10) {
         pendingFile: meta && meta.pendingFile ? meta.pendingFile : undefined
       };
       }
+    } else if (tipo === 'carousel') {
+      // cria bloco do tipo carousel usando meta.items quando fornecido
+      const items = meta && meta.items ? meta.items : [];
+      novoBloco = {
+        tipo: label,
+        conteudo: null,
+        tipoSelecionado: tipo,
+        subtipo: "",
+        items: items.map(it => ({
+          url: it.url || "",
+          subtipo: it.subtipo || "",
+          meta: it.meta || undefined,
+          nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split('/').pop()) || "",
+          filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
+        })),
+        created_at: new Date().toISOString(),
+      };
     } else {
       novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
     }
@@ -122,6 +143,20 @@ export function useBlocos(limite = 10) {
         created_at
       };
       }
+    } else if (tipo === 'carousel') {
+      const items = meta && meta.items ? meta.items : (bloco.items || []);
+      novosBlocos[idx] = {
+        ...bloco,
+        tipoSelecionado: tipo,
+        conteudo: null,
+        items: items.map(it => ({
+          url: it.url || "",
+          subtipo: it.subtipo || "",
+          meta: it.meta || undefined,
+          nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split('/').pop()) || "",
+          filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
+        })),
+      };
     } else {
       novosBlocos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };
     }

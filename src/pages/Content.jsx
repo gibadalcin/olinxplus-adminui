@@ -74,36 +74,6 @@ export default function Content() {
     const params = new URLSearchParams(location.search);
     const ownerId = params.get("ownerId");
     const imageId = params.get("imageId");
-
-    if (!ownerId) {
-        return (
-            <div style={{ color: "#fff", padding: "2rem" }}>
-                <h2>Erro ao carregar conteúdo</h2>
-                <p>Parâmetro <b>ownerId</b> não informado na URL.</p>
-                <CustomButton onClick={() => window.history.back()}>Voltar</CustomButton>
-            </div>
-        );
-    }
-
-    const [width, setWidth] = useState(768);
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= width);
-    const [blocosOriginais, setBlocosOriginais] = useState([]);
-    const [texto, setTexto] = useState("");
-    const [videos, setVideos] = useState("");
-    const [latitude, setLatitude] = useState("");
-    const [longitude, setLongitude] = useState("");
-    const [tipoRegiao, setTipoRegiao] = useState("");
-
-    // Limpa blocos ao trocar tipo de local
-    function handleChangeTipoRegiao(novoTipo) {
-        setTipoRegiao(novoTipo);
-        setBlocos([]);
-        setBlocosOriginais([]);
-    }
-    const [nomeRegiao, setNomeRegiao] = useState("");
-    const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
-    // Estado para subtipo
-    const [subtipo, setSubtipo] = useState("");
     const {
         blocos,
         setBlocos,
@@ -117,14 +87,33 @@ export default function Content() {
         getNextLabel,
         resetBlocos,
     } = useBlocos(10);
-    const [nextMarca, setNextMarca] = useState(null);
+    const navigate = useNavigate();
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const width = 768;
+    const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
+    // garante que, quando as marcas forem carregadas, a primeira seja selecionada como padrão
+    useEffect(() => {
+        if ((!marca || marca === "") && Array.isArray(marcas) && marcas.length > 0) {
+            // preferir campo `nome`, fallback para `id` ou índice
+            const first = marcas[0];
+            const value = first && (first.nome || first.name || first.id || "");
+            if (value) setMarca(value);
+        }
+    }, [marcas, marca, setMarca]);
+    const [blocosOriginais, setBlocosOriginais] = useState([]);
+    const [latitude, setLatitude] = useState("");
+    const [longitude, setLongitude] = useState("");
+    const [tipoRegiao, setTipoRegiao] = useState("");
+    const [nomeRegiao, setNomeRegiao] = useState("");
+    const [tipoBloco, setTipoBloco] = useState("");
     const [showModal, setShowModal] = useState(false);
     const [showContent, setShowContent] = useState(false);
-    const navigate = useNavigate();
-    const { marcas, marca, setMarca, loadingMarcas } = useMarcas(ownerId);
-    const { imagens, setImagens, imagensInput, setImagensInput, loading: loadingImagens } = useImagens(ownerId, imageId);
+    const [nextMarca, setNextMarca] = useState(null);
+    const [subtipo, setSubtipo] = useState("");
 
-    // Lógica para cor/texto do botão principal (depois de marca)
+    function handleChangeTipoRegiao(novo) {
+        setTipoRegiao(novo);
+    }
     let botaoCor = "#4cd964"; // verde padrão
     let botaoTexto = "Salvar";
     if (
@@ -152,6 +141,7 @@ export default function Content() {
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMsg, setSnackbarMsg] = useState("");
     const [snackbarSeverity, setSnackbarSeverity] = useState("success");
+    const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0, errors: [] });
 
     const handleSnackbarClose = (event, reason) => {
         if (reason === 'clickaway') return;
@@ -172,9 +162,16 @@ export default function Content() {
             let token = null;
             if (user) token = await user.getIdToken();
             const updatedBlocos = [...blocos];
+            // prepara contador de uploads
+            const totalPending = updatedBlocos.reduce((acc, b) => acc + (b && b.pendingFile ? 1 : 0), 0);
+            setUploadProgress({ done: 0, total: totalPending, errors: [] });
+
             for (let i = 0; i < updatedBlocos.length; i++) {
                 const b = updatedBlocos[i];
                 if (b && b.pendingFile) {
+                    // marca como uploading e atualiza UI
+                    updatedBlocos[i] = { ...b, upload_status: 'uploading', upload_error: null };
+                    setBlocos([...updatedBlocos]);
                     try {
                         const formData = new FormData();
                         formData.append("file", b.pendingFile);
@@ -194,25 +191,51 @@ export default function Content() {
                                 filename: serverBloco.filename || b.filename || "",
                                 type: serverBloco.type || b.type || "",
                                 created_at: serverBloco.created_at || b.created_at || new Date().toISOString(),
+                                upload_status: 'done',
+                                upload_error: null,
                             };
                             // remove pendingFile
                             delete updatedBlocos[i].pendingFile;
+                            setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
+                            // atualiza UI
+                            setBlocos([...updatedBlocos]);
                         } else {
                             console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor', result);
                             // decide: continuar e enviar sem esse arquivo, ou abortar
                             // vamos abortar o salvamento para evitar inconsistências
-                            setSnackbarMsg('Falha ao enviar arquivos de imagem. Tente novamente.');
+                            updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: result && result.error ? result.error : 'unknown' };
+                            setBlocos([...updatedBlocos]);
+                            setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, reason: result && result.error ? result.error : 'unknown' }] }));
+                            setSnackbarMsg('Falha ao enviar arquivos de imagem. Veja detalhes no console e tente novamente.');
                             setSnackbarSeverity('error');
                             setSnackbarOpen(true);
                             return;
                         }
                     } catch (err) {
                         console.error('[handleSubmit] Erro ao enviar arquivo pendente:', err);
-                        setSnackbarMsg('Erro ao enviar arquivos de imagem.');
+                        updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: String(err) };
+                        setBlocos([...updatedBlocos]);
+                        setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, reason: String(err) }] }));
+                        setSnackbarMsg('Erro ao enviar arquivos de imagem. Veja console.');
                         setSnackbarSeverity('error');
                         setSnackbarOpen(true);
                         return;
                     }
+                }
+            }
+            // após uploads pendentes concluídos
+            if (uploadProgress.total > 0) {
+                const done = uploadProgress.done;
+                const total = uploadProgress.total;
+                const errors = uploadProgress.errors || [];
+                if (errors.length === 0) {
+                    setSnackbarMsg(`Uploads concluídos: ${done}/${total}`);
+                    setSnackbarSeverity('success');
+                    setSnackbarOpen(true);
+                } else {
+                    setSnackbarMsg(`Uploads concluídos: ${done}/${total}. Erros em ${errors.length} arquivos.`);
+                    setSnackbarSeverity('warning');
+                    setSnackbarOpen(true);
                 }
             }
             // grava blocos atualizados no estado antes de montar o payload
@@ -269,6 +292,26 @@ export default function Content() {
                 tipo_regiao: tipoRegiao,
                 nome_regiao: nomeRegiao,
             };
+            // Validação extra: não permitir envio de URLs locais (blob:)
+            const invalidBlocks = (payload.blocos || []).map((b, idx) => {
+                const u = (b.url || "") + "";
+                const c = (b.conteudo || "") + "";
+                if ((u.startsWith && u.startsWith('blob:')) || (c.startsWith && c.startsWith('blob:'))) {
+                    return { index: idx, filename: b.filename || b.nome || '(sem nome)' };
+                }
+                return null;
+            }).filter(Boolean);
+            if (invalidBlocks.length > 0) {
+                const preview = invalidBlocks.slice(0, 3).map(x => `#${x.index + 1} (${x.filename})`).join(', ');
+                const msg = invalidBlocks.length <= 3
+                    ? `Uploads pendentes nos blocos: ${preview}. Aguarde os uploads ou remova os blocos.`
+                    : `Uploads pendentes em ${invalidBlocks.length} blocos (ex: ${preview}). Aguarde os uploads ou remova os blocos.`;
+                setSnackbarMsg(msg);
+                setSnackbarSeverity('warning');
+                setSnackbarOpen(true);
+                console.warn('[handleSubmit] Bloqueado envio: blocos com URL blob: detectados', invalidBlocks);
+                return;
+            }
             console.log('[handleSubmit] Payload enviado:', payload);
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
                 method: "POST",
@@ -382,6 +425,26 @@ export default function Content() {
             inputRef.current.focus();
         }
     }, [showModal, tipoSelecionado]);
+
+    // Validação por bloco: trata tipos diferentes (imagem, carousel, texto)
+    function isBlockIncomplete(b) {
+        if (!b) return true;
+        if (!b.tipo && !b.tipoSelecionado) return true;
+        const tipo = b.tipoSelecionado || b.tipo;
+        // Imagem: aceita se houver url (gs://, / ou blob:) ou conteudo (caso o backend use conteudo)
+        if (tipo === 'imagem') {
+            return !((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile));
+        }
+        // Carousel: precisa ter array items com ao menos um item válido (url ou pendingFile)
+        if (tipo === 'carousel') {
+            if (!Array.isArray(b.items) || b.items.length === 0) return true;
+            return !b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
+        }
+        // Outros tipos de bloco (texto etc.): requerem conteudo não-vazio
+        return !(b.conteudo && String(b.conteudo).trim() !== '');
+    }
+
+    const anyInvalidBlock = Array.isArray(blocos) && blocos.some(isBlockIncomplete);
 
     return (
         <>
@@ -575,7 +638,7 @@ export default function Content() {
                             (
                                 (blocos.length === 0 && blocosOriginais.length === 0) ||
                                 (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
-                                blocos.some(b => !b.tipo || !b.conteudo)
+                                anyInvalidBlock
                             )
                         }
                         color={botaoCor}

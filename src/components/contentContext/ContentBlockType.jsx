@@ -3,10 +3,12 @@ import { uploadLogo, uploadContentImage, getSignedContentUrl } from "../../api";
 import { getAuth } from "firebase/auth";
 import useIsMasterAdmin from "../../hooks/useIsMasterAdmin";
 // Subtipos possíveis para blocos de imagem
+// subtipos para conteúdo visual. incluímos 'video' porque o carousel pode conter vídeos
 const SUBTIPOS_IMAGEM = [
     { value: "banner", label: "Banner" },
     { value: "card", label: "Card" },
     { value: "header", label: "Cabeçalho" },
+    { value: "video", label: "Vídeo" },
 ];
 
 export default function ContentBlockType({
@@ -55,7 +57,14 @@ export default function ContentBlockType({
     const [carouselImagens, setCarouselImagens] = useState([{ url: "", subtipo: "" }]);
     // Metadados do último upload (single image)
     const [uploadedMeta, setUploadedMeta] = useState(null);
-    const [showPath, setShowPath] = useState(false);
+    // signed url para preview de mídia (usado quando gs://)
+    const [signedPreviewUrl, setSignedPreviewUrl] = useState(null);
+    // showPathModal controla o toggle dentro do modal
+    const [showPathModal, setShowPathModal] = useState(false);
+    // showPathMap controla visibilidade do caminho por bloco no preview
+    const [showPathMap, setShowPathMap] = useState({});
+    // mapa para alternar edição de URL por item do carousel
+    const [showUrlEditMap, setShowUrlEditMap] = useState({});
 
     // estilos padrão de botões usados no modal
     const BTN = {
@@ -70,16 +79,42 @@ export default function ContentBlockType({
     // determina se o usuário corrente é master admin
     const currentUser = getAuth().currentUser || {};
     const isMaster = useIsMasterAdmin({ uid: currentUser.uid || "", email: currentUser.email || "" });
-    // detecta mobile para ajustar layout (empilhar em column em telas pequenas)
+    // detecta mobile (<=768px) e medium (769-1339px) para ajustar layout em pontos de quebra
     const [isMobile, setIsMobile] = useState(false);
+    const [isMedium, setIsMedium] = useState(false);
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        const mq = window.matchMedia('(max-width: 640px)');
-        const onChange = () => setIsMobile(mq.matches);
-        onChange();
-        try { if (mq.addEventListener) mq.addEventListener('change', onChange); else mq.addListener(onChange); } catch (e) { }
-        return () => { try { if (mq.removeEventListener) mq.removeEventListener('change', onChange); else mq.removeListener(onChange); } catch (e) { } };
+        const mqMobile = window.matchMedia('(max-width: 768px)');
+        const mqMedium = window.matchMedia('(max-width: 1339px)');
+        const onMobileChange = () => setIsMobile(mqMobile.matches);
+        const onMediumChange = () => setIsMedium(mqMedium.matches && !mqMobile.matches);
+        onMobileChange();
+        onMediumChange();
+        try { if (mqMobile.addEventListener) mqMobile.addEventListener('change', onMobileChange); else mqMobile.addListener(onMobileChange); } catch (e) { }
+        try { if (mqMedium.addEventListener) mqMedium.addEventListener('change', onMediumChange); else mqMedium.addListener(onMediumChange); } catch (e) { }
+        return () => {
+            try { if (mqMobile.removeEventListener) mqMobile.removeEventListener('change', onMobileChange); else mqMobile.removeListener(onMobileChange); } catch (e) { }
+            try { if (mqMedium.removeEventListener) mqMedium.removeEventListener('change', onMediumChange); else mqMedium.removeListener(onMediumChange); } catch (e) { }
+        };
     }, []);
+
+    // Validação por bloco que retorna razão caso inválido, ou null se válido
+    function blockInvalidReason(b) {
+        if (!b) return 'Bloco ausente';
+        const tipo = b.tipoSelecionado || b.tipo;
+        if (!tipo) return 'Tipo não selecionado';
+        if (tipo === 'imagem') {
+            if ((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile)) return null;
+            return 'Imagem sem URL/arquivo';
+        }
+        if (tipo === 'carousel') {
+            if (!Array.isArray(b.items) || b.items.length === 0) return 'Carousel sem items';
+            const ok = b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
+            return ok ? null : 'Carousel sem mídias válidas';
+        }
+        if (b.conteudo && String(b.conteudo).trim() !== '') return null;
+        return 'Conteúdo vazio';
+    }
 
     // Permite adicionar/remover imagens e escolher subtipo
     function handleCarouselImgChange(idx, field, value) {
@@ -88,6 +123,8 @@ export default function ContentBlockType({
         setCarouselImagens(novas);
     }
     function handleAddCarouselImg() {
+        // Impede adicionar mais de 4 itens
+        if (Array.isArray(carouselImagens) && carouselImagens.length >= 4) return;
         setCarouselImagens([...carouselImagens, { url: "", subtipo: "" }]);
     }
     function handleRemoveCarouselImg(idx) {
@@ -103,6 +140,44 @@ export default function ContentBlockType({
             setShowModal(true);
         }
     }, [tipoSelecionado]);
+
+    // Quando o modal abrir para blocos de texto, foca o textarea para digitar imediatamente
+    useEffect(() => {
+        if (!showModal) return;
+        // considera texto qualquer tipo que não seja imagem, vídeo ou carousel
+        const isTextType = tipoSelecionado && !['imagem', 'video', 'carousel'].includes(tipoSelecionado);
+        if (!isTextType) return;
+        // foco com pequeno delay para garantir que o DOM do modal foi renderizado
+        setTimeout(() => {
+            try {
+                const el = inputRef && inputRef.current;
+                if (el && typeof el.focus === 'function') {
+                    el.focus();
+                    // posiciona cursor ao final do conteúdo
+                    try { if (typeof el.setSelectionRange === 'function') el.setSelectionRange(el.value.length, el.value.length); } catch (e) { }
+                }
+            } catch (e) { }
+        }, 60);
+    }, [showModal, tipoSelecionado]);
+
+    // Carrega signed URL quando o conteúdo for um gs:// (imagem ou vídeo)
+    useEffect(() => {
+        let mounted = true;
+        async function loadSigned() {
+            try {
+                const url = uploadedMeta?.url || conteudo;
+                const isGs = url && typeof url === 'string' && url.startsWith('gs://');
+                if (isGs) {
+                    const s = await getSignedContentUrl(url);
+                    if (mounted) setSignedPreviewUrl(s);
+                } else {
+                    if (mounted) setSignedPreviewUrl(null);
+                }
+            } catch (e) { if (mounted) setSignedPreviewUrl(null); }
+        }
+        loadSigned();
+        return () => { mounted = false; };
+    }, [uploadedMeta?.url, conteudo]);
 
     function renderConteudoInput() {
         if (!tipoSelecionado) return null;
@@ -125,8 +200,7 @@ export default function ContentBlockType({
                 };
                 setUploadedMeta(meta);
                 // ao selecionar arquivo local, não mostrar o campo de código automaticamente
-                // informa o usuário que o arquivo foi carregado localmente
-                alert("Arquivo carregado localmente. Clique em 'Adicionar bloco' e depois em 'Salvar' para enviar ao servidor.");
+                // mensagem UX removida: não usar alert() bloqueante aqui
             }
             return (
                 <>
@@ -140,7 +214,7 @@ export default function ContentBlockType({
                             style={{ flex: 1, padding: "8px", borderRadius: "6px" }}
                             disabled={disabled}
                         >
-                            <option value="">Selecione o tipo de imagem</option>
+                            <option value="">Selecione o tipo de Imagem/Video</option>
                             {SUBTIPOS_IMAGEM.map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
@@ -149,7 +223,7 @@ export default function ContentBlockType({
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*"
+                            accept={subtipoImagem === 'video' ? 'video/*' : 'image/*'}
                             onChange={handleFileChange}
                             disabled={disabled || !subtipoImagem}
                             style={{ display: 'none' }}
@@ -167,7 +241,7 @@ export default function ContentBlockType({
                                 cursor: (disabled || !subtipoImagem) ? 'not-allowed' : 'pointer'
                             }}
                         >
-                            {subtipoImagem ? 'Escolher arquivo' : 'Tipo indefinido'}
+                            {subtipoImagem ? 'Escolher arquivo' : '<- defina o tipo'}
                         </button>
                         {/* botão Mostrar caminho será renderizado abaixo do nome do arquivo para manter padrão */}
                     </div>
@@ -175,10 +249,21 @@ export default function ContentBlockType({
                         <div style={{ width: isMobile ? '100%' : 120, height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: 8, overflow: 'hidden' }}>
                             {uploadedMeta?.url || conteudo ? (
                                 (uploadedMeta && uploadedMeta.url && (uploadedMeta.url.startsWith('gs://') || uploadedMeta.url.startsWith('/')))
-                                    ? <ContentImagePreview gsUrl={uploadedMeta.url} />
-                                    : <img src={uploadedMeta?.url || conteudo} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ? (
+                                        (subtipoImagem === 'video' || (uploadedMeta && uploadedMeta.type && uploadedMeta.type.startsWith && uploadedMeta.type.startsWith('video'))) ? (
+                                            signedPreviewUrl ? <video src={signedPreviewUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ color: '#999' }}>Carregando vídeo...</div>
+                                        ) : (
+                                            <ContentImagePreview gsUrl={uploadedMeta.url} />
+                                        )
+                                    ) : (
+                                        (subtipoImagem === 'video' || (uploadedMeta && uploadedMeta.type && uploadedMeta.type.startsWith && uploadedMeta.type.startsWith('video'))) ? (
+                                            <video src={uploadedMeta?.url || conteudo} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                            <img src={uploadedMeta?.url || conteudo} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        )
+                                    )
                             ) : (
-                                <div style={{ color: '#999', fontSize: 12 }}>Sem imagem</div>
+                                <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
                             )}
                         </div>
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -195,32 +280,19 @@ export default function ContentBlockType({
                                 {isMaster && (uploadedMeta?.url || conteudo) && (
                                     <button
                                         type="button"
-                                        onClick={() => setShowPath(p => !p)}
+                                        onClick={() => setShowPathModal(p => !p)}
                                         style={{ ...BTN.base, ...BTN.neutral, ...BTN.small, height: 34, width: '100%', textAlign: 'left', boxSizing: 'border-box', outline: 'none', display: 'block' }}
                                     >
-                                        {showPath ? 'Ocultar caminho' : 'Mostrar caminho'}
+                                        {showPathModal ? 'Ocultar caminho' : 'Mostrar caminho'}
                                     </button>
                                 )}
                                 <div style={{ minHeight: 26, paddingLeft: 6, paddingRight: 6, boxSizing: 'border-box' }}>
-                                    <div style={{ fontSize: 12, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', opacity: showPath ? 1 : 0, transition: 'opacity 160ms linear', position: 'relative', wordBreak: 'break-word' }}>{uploadedMeta?.url || conteudo}</div>
+                                    <div style={{ fontSize: 12, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', opacity: showPathModal ? 1 : 0, transition: 'opacity 160ms linear', position: 'relative', wordBreak: 'break-word' }}>{uploadedMeta?.url || conteudo}</div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </>
-            );
-        }
-        if (tipoSelecionado === "video") {
-            return (
-                <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="URL do vídeo"
-                    value={conteudo}
-                    onChange={e => setConteudo(e.target.value)}
-                    style={{ width: "100%", marginBottom: "1rem", padding: "8px", borderRadius: "6px" }}
-                    disabled={disabled}
-                />
             );
         }
         if (tipoSelecionado === "carousel") {
@@ -239,7 +311,7 @@ export default function ContentBlockType({
                     url: objectUrl
                 };
                 handleCarouselImgChange(idx, "meta", meta);
-                alert("Arquivo carregado localmente no carousel. Clique em 'Salvar' para enviar ao servidor.");
+                // mensagem UX removida: não usar alert() bloqueante aqui
             }
             return (
                 <div style={{ width: "100%" }}>
@@ -260,7 +332,7 @@ export default function ContentBlockType({
                             <input
                                 id={`carousel-file-${idx}`}
                                 type="file"
-                                accept="image/*"
+                                accept={img.subtipo === 'video' ? 'video/*' : 'image/*'}
                                 style={{ display: 'none' }}
                                 onChange={e => handleFileChangeCarousel(idx, e)}
                                 disabled={disabled}
@@ -273,22 +345,65 @@ export default function ContentBlockType({
                             >
                                 {img.subtipo ? 'Escolher arquivo' : 'Tipo indefinido'}
                             </button>
-                            <input
-                                type="text"
-                                placeholder="URL da imagem"
-                                value={img.url}
-                                onChange={e => handleCarouselImgChange(idx, "url", e.target.value)}
-                                style={{ flex: 1, padding: 6, borderRadius: 6 }}
-                                disabled={disabled}
-                            />
+                            {/* Mostrar apenas o nome do arquivo/video. Permitir edição via botão 'Editar URL' */}
+                            <div style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
+                                {!showUrlEditMap[idx] ? (
+                                    <input
+                                        type="text"
+                                        placeholder="Arquivo"
+                                        value={(img.meta && (img.meta.nome || img.meta.filename)) || (img.url ? String(img.url).split('/').pop() : '')}
+                                        readOnly
+                                        style={{ flex: 1, padding: 6, borderRadius: 6, background: '#f5f5f5', color: '#333' }}
+                                        disabled={disabled}
+                                    />
+                                ) : (
+                                    <input
+                                        type="text"
+                                        placeholder="URL da mídia"
+                                        value={img.url}
+                                        onChange={e => handleCarouselImgChange(idx, "url", e.target.value)}
+                                        style={{ flex: 1, padding: 6, borderRadius: 6 }}
+                                        disabled={disabled}
+                                    />
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowUrlEditMap(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                    style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#777', color: '#fff', cursor: 'pointer' }}
+                                >
+                                    {showUrlEditMap[idx] ? 'Fechar' : 'Editar URL'}
+                                </button>
+                            </div>
                             {img.url && (
-                                <img src={img.url} alt="preview" style={{ maxWidth: 60, maxHeight: 60, borderRadius: 6, marginLeft: 4 }} />
+                                img.subtipo === 'video' ? (
+                                    <video src={img.url} style={{ maxWidth: isMobile ? 160 : 80, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} controls />
+                                ) : (
+                                    <img src={img.url} alt="preview" style={{ maxWidth: isMobile ? 160 : 60, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} />
+                                )
                             )}
                             <button type="button" onClick={() => handleRemoveCarouselImg(idx)} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "6px 10px", cursor: "pointer" }} disabled={carouselImagens.length === 1}>-</button>
                         </div>
-                    ))}
-                    <button type="button" onClick={handleAddCarouselImg} style={{ background: "#2196f3", color: "#fff", border: "none", borderRadius: 4, padding: "8px 16px", cursor: "pointer", marginTop: 8 }}>Adicionar imagem</button>
-                </div>
+                    ))
+                    }
+                    <button
+                        type="button"
+                        onClick={handleAddCarouselImg}
+                        disabled={Array.isArray(carouselImagens) && carouselImagens.length >= 4}
+                        style={{
+                            background: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? '#b2b2b2' : '#2196f3',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 4,
+                            padding: '8px 16px',
+                            cursor: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'not-allowed' : 'pointer',
+                            marginTop: 8,
+                            opacity: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 0.7 : 1
+                        }}
+                        title={(Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'Limite de 4 mídias por carousel atingido' : 'Adicionar imagem'}
+                    >
+                        {(Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'Limite atingido (4)' : 'Adicionar imagem'}
+                    </button>
+                </div >
             );
         }
         return (
@@ -342,29 +457,97 @@ export default function ContentBlockType({
                             flexDirection: isMobile ? 'column' : 'row',
                             gap: isMobile ? 8 : 0
                         }}>
-                        <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'row' : 'row', width: isMobile ? '100%' : 'auto' }}>
-                            {bloco.url && (bloco.url.startsWith('gs://') ? (
-                                <ContentImagePreview gsUrl={bloco.url} />
+                        <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: bloco.tipoSelecionado === 'carousel' ? 'column-reverse' : 'row', width: isMobile ? '100%' : 'auto' }}>
+                            {bloco.tipoSelecionado === 'carousel' && Array.isArray(bloco.items) ? (
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    {bloco.items.map((it, i) => (
+                                        <div key={i} style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            {it.url ? (
+                                                it.url.startsWith && it.url.startsWith('gs://') ? (
+                                                    <ContentImagePreview gsUrl={it.url} isVideo={it.subtipo === 'video'} />
+                                                ) : (
+                                                    it.subtipo === 'video' ? (
+                                                        <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    ) : (
+                                                        <img src={it.url} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    )
+                                                )
+                                            ) : (
+                                                <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             ) : (
-                                <img src={bloco.url} alt="thumb" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
-                            ))}
+                                bloco.url && (bloco.url.startsWith('gs://') ? (
+                                    <ContentImagePreview gsUrl={bloco.url} />
+                                ) : (
+                                    <img src={bloco.url} alt="thumb" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
+                                ))
+                            )}
                             <div>
-                                <strong style={{ color: "#4cd964" }}>{bloco.tipo}</strong>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <strong style={{ color: "#4cd964" }}>{bloco.tipo}</strong>
+                                    {(() => {
+                                        const reason = blockInvalidReason(bloco);
+                                        if (!reason) return null;
+                                        return (
+                                            <button
+                                                onClick={() => {
+                                                    // abrir modal no item correspondente ao clicar no badge
+                                                    setTipoSelecionado(bloco.tipoSelecionado || bloco.tipo);
+                                                    let initialConteudo = "";
+                                                    try {
+                                                        const c = bloco.conteudo;
+                                                        const u = bloco.url;
+                                                        if (c && typeof c === 'string' && !c.startsWith('blob:')) {
+                                                            initialConteudo = c;
+                                                        } else if (u && typeof u === 'string' && !u.startsWith('blob:') && (u.startsWith('gs://') || u.startsWith('/'))) {
+                                                            initialConteudo = u;
+                                                        }
+                                                    } catch (e) { initialConteudo = ""; }
+                                                    setConteudo(initialConteudo);
+                                                    setSubtipoImagem(bloco.subtipo || "");
+                                                    if (bloco.tipoSelecionado === 'carousel' && Array.isArray(bloco.items)) {
+                                                        try {
+                                                            const mapped = bloco.items.map(it => ({ url: it.url || it.gsUrl || '', subtipo: it.subtipo || '', meta: it.meta || null }));
+                                                            setCarouselImagens(mapped.length ? mapped : [{ url: '', subtipo: '' }]);
+                                                        } catch (e) { setCarouselImagens([{ url: '', subtipo: '' }]); }
+                                                    }
+                                                    setEditIdx(idx);
+                                                    setShowModal(true);
+                                                }}
+                                                title={reason}
+                                                aria-label={reason}
+                                                style={{ background: '#ffcc00', color: '#000', padding: '2px 6px', borderRadius: 6, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                                            >
+                                                ⚠
+                                            </button>
+                                        );
+                                    })()}
+                                </div>
+                                {/* Indicador de status de upload por bloco */}
+                                <div style={{ fontSize: 12, marginTop: 6 }}>
+                                    {bloco.upload_status === 'uploading' && <span style={{ color: '#f0ad4e' }}>⏳ enviando...</span>}
+                                    {bloco.upload_status === 'done' && <span style={{ color: '#4cd964' }}>✅ enviado</span>}
+                                    {bloco.upload_status === 'error' && <span style={{ color: '#ff3b30' }}>❌ erro</span>}
+                                    {bloco.upload_error && <div style={{ color: '#ffb3b3', fontSize: 12 }}>{bloco.upload_error}</div>}
+                                </div>
                                 <div style={{ color: "#fff", marginTop: "4px", wordBreak: "break-word" }}>
                                     <div style={{ fontSize: 12, color: '#ccc' }}>{bloco.nome || bloco.filename || ''}</div>
-                                    {/* Apenas master pode ver opção de revelar caminho do arquivo */}
-                                    {isMaster && (bloco.url || bloco.conteudo) && (
+                                    {/* Apenas master pode ver opção de revelar caminho do arquivo e somente para blocos de imagem */}
+                                    {isMaster && bloco.tipoSelecionado === 'imagem' && (bloco.url || bloco.conteudo) && (
                                         <div style={{ marginTop: 6 }}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setShowPath(p => !p)}
+                                                    onClick={() => setShowPathMap(prev => ({ ...prev, [idx]: !prev[idx] }))}
                                                     style={{ background: '#666', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontSize: 12, display: 'block' }}
                                                 >
-                                                    {showPath ? 'Ocultar caminho' : 'Mostrar caminho'}
+                                                    {showPathMap[idx] ? 'Ocultar caminho' : 'Mostrar caminho'}
                                                 </button>
                                                 <div style={{ minHeight: 26, paddingLeft: 4, paddingRight: 4, boxSizing: 'border-box' }}>
-                                                    <div style={{ fontSize: 12, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', opacity: showPath ? 1 : 0, transition: 'opacity 160ms linear', position: 'relative', wordBreak: 'break-word' }}>{bloco.url || bloco.conteudo}</div>
+                                                    <div style={{ fontSize: 12, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', opacity: showPathMap[idx] ? 1 : 0, transition: 'opacity 160ms linear', position: 'relative', wordBreak: 'break-word' }}>{bloco.url || bloco.conteudo}</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -400,6 +583,15 @@ export default function ContentBlockType({
                                     }
                                     setConteudo(initialConteudo);
                                     setSubtipoImagem(bloco.subtipo || "");
+                                    // Se o bloco editado for um carousel, popula o estado local com os items existentes
+                                    if (bloco.tipoSelecionado === 'carousel' && Array.isArray(bloco.items)) {
+                                        try {
+                                            const mapped = bloco.items.map(it => ({ url: it.url || it.gsUrl || '', subtipo: it.subtipo || '', meta: it.meta || null }));
+                                            setCarouselImagens(mapped.length ? mapped : [{ url: '', subtipo: '' }]);
+                                        } catch (e) {
+                                            setCarouselImagens([{ url: '', subtipo: '' }]);
+                                        }
+                                    }
                                     setEditIdx(idx);
                                     setShowModal(true);
                                 }}
@@ -460,11 +652,12 @@ export default function ContentBlockType({
                         background: 'rgba(255,255,255)',
                         borderRadius: '16px',
                         boxShadow: '0 4px 32px rgba(255,255,255,0.18)',
-                        padding: '2.5rem 2rem',
-                        minWidth: '340px',
-                        maxWidth: '96vw',
-                        width: '50vw',
-                        minHeight: '220px',
+                        padding: isMobile ? '1rem' : isMedium ? '1.75rem 1.25rem' : '2.5rem 2rem',
+                        /* para desktop queremos pelo menos 1340px */
+                        minWidth: isMobile ? '320px' : isMedium ? '650px' : '994px',
+                        maxWidth: '86vw',
+                        width: isMobile ? '92vw' : isMedium ? '80vw' : 'auto',
+                        minHeight: isMobile ? '200px' : '220px',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -478,7 +671,28 @@ export default function ContentBlockType({
                         {renderConteudoInput()}
                         {/* determina se o bloco de imagem tem dados suficientes para adicionar/editar */}
                         {(() => {
-                            const isImageReady = tipoSelecionado === 'imagem' ? (subtipoImagem && (uploadedMeta?.pendingFile || (conteudo && conteudo.trim() !== ""))) : (conteudo && conteudo.trim() !== "");
+                            // Validação mais robusta para habilitar o botão de salvar:
+                            // - imagens: precisa ter subtipo e pendingFile ou url
+                            // - carousel: ao menos um item com subtipo e pendingFile ou url
+                            // - outros tipos: conteudo não vazio
+                            let isImageReady = false;
+                            if (tipoSelecionado === 'imagem') {
+                                isImageReady = Boolean(subtipoImagem && (uploadedMeta?.pendingFile || (conteudo && conteudo.trim() !== "")));
+                            } else if (tipoSelecionado === 'carousel') {
+                                isImageReady = Array.isArray(carouselImagens) && carouselImagens.some(it => it && it.subtipo && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== "")));
+                            } else {
+                                isImageReady = Boolean(conteudo && conteudo.trim() !== "");
+                            }
+                            // validação defensiva: se houver upload pendente ou um uploadedMeta/url válido, permita salvar
+                            if (!isImageReady) {
+                                if (uploadedMeta && (uploadedMeta.pendingFile || (uploadedMeta.url && String(uploadedMeta.url).trim() !== ""))) {
+                                    isImageReady = true;
+                                }
+                            }
+                            if (!isImageReady && Array.isArray(carouselImagens)) {
+                                const anyItem = carouselImagens.some(it => it && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== "")));
+                                if (anyItem) isImageReady = true;
+                            }
                             return (
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
                                     <button
@@ -509,7 +723,7 @@ export default function ContentBlockType({
                                             if (setSubtipo) setSubtipo("");
                                             setUploadedMeta(null);
                                             setCarouselImagens([{ url: "", subtipo: "" }]);
-                                            setShowPath(false);
+                                            setShowPathModal(false);
                                             setShowModal(false);
 
                                             // limpar inputs file (visíveis ou ocultos)
@@ -544,6 +758,8 @@ export default function ContentBlockType({
                                             onClick={() => {
                                                 if (tipoSelecionado === "imagem") {
                                                     onAddBloco(tipoSelecionado, conteudo, subtipoImagem, uploadedMeta);
+                                                } else if (tipoSelecionado === "carousel") {
+                                                    onAddBloco(tipoSelecionado, null, null, { items: carouselImagens });
                                                 } else {
                                                     onAddBloco(tipoSelecionado, conteudo);
                                                 }
@@ -551,6 +767,7 @@ export default function ContentBlockType({
                                                 setTipoSelecionado("");
                                                 setSubtipoImagem("");
                                                 setUploadedMeta(null);
+                                                setCarouselImagens([{ url: "", subtipo: "" }]);
                                                 setShowModal(false);
                                             }}
                                             style={{
@@ -576,6 +793,8 @@ export default function ContentBlockType({
                                             onClick={() => {
                                                 if (tipoSelecionado === "imagem") {
                                                     onEditBloco(editIdx, tipoSelecionado, conteudo, subtipoImagem, uploadedMeta);
+                                                } else if (tipoSelecionado === "carousel") {
+                                                    onEditBloco(editIdx, tipoSelecionado, null, null, { items: carouselImagens });
                                                 } else {
                                                     onEditBloco(editIdx, tipoSelecionado, conteudo);
                                                 }
@@ -584,6 +803,7 @@ export default function ContentBlockType({
                                                 setTipoSelecionado("");
                                                 setSubtipoImagem("");
                                                 setUploadedMeta(null);
+                                                setCarouselImagens([{ url: "", subtipo: "" }]);
                                                 setShowModal(false);
                                             }}
                                             style={{
@@ -614,18 +834,21 @@ export default function ContentBlockType({
 }
 
 // Componente para buscar e exibir a signed URL de uma imagem de conteúdo
-function ContentImagePreview({ gsUrl }) {
+function ContentImagePreview({ gsUrl, isVideo }) {
     const [signedUrl, setSignedUrl] = useState(null);
     useEffect(() => {
         let isMounted = true;
         async function fetchUrl() {
             if (!gsUrl) return;
-            const url = await getSignedContentUrl(gsUrl);
-            if (isMounted) setSignedUrl(url);
+            try {
+                const url = await getSignedContentUrl(gsUrl);
+                if (isMounted) setSignedUrl(url);
+            } catch (e) { if (isMounted) setSignedUrl(null); }
         }
         fetchUrl();
         return () => { isMounted = false; };
     }, [gsUrl]);
-    if (!signedUrl) return <span>Carregando imagem...</span>;
+    if (!signedUrl) return <span>Carregando mídia...</span>;
+    if (isVideo) return <video src={signedUrl} controls style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
     return <img src={signedUrl} alt="preview" style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
 }
