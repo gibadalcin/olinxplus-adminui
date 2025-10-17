@@ -50,7 +50,9 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                 setLatitude(e.latlng.lat);
                 setLongitude(e.latlng.lng);
                 const nome = await buscarNomeRegiao(e.latlng.lat, e.latlng.lng, tipoRegiaoState);
-                setAddress(nome);
+                // Força atualização mesmo se valor igual
+                setAddress("");
+                setTimeout(() => setAddress(nome), 0);
             }
         });
         return latitude && longitude ? (

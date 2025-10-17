@@ -100,6 +100,8 @@ export default function Content() {
     }
     const [nomeRegiao, setNomeRegiao] = useState("");
     const [tipoBloco, setTipoBloco] = useState(""); // estado para tipo de bloco
+    // Estado para subtipo
+    const [subtipo, setSubtipo] = useState("");
     const {
         blocos,
         setBlocos,
@@ -163,7 +165,47 @@ export default function Content() {
             return;
         }
         try {
-            const blocosLimpos = blocos.map(({ tipo, conteudo }) => ({ tipo, conteudo }));
+            const blocosLimpos = blocos.map(b => {
+                const url = b.url || b.conteudo || "";
+                // Garante nomes exatos esperados pelo backend
+                let nome = b.nome || b.name || "";
+                let filename = b.filename || "";
+                if (!filename && url) {
+                    if (url.startsWith("gs://")) {
+                        const parts = url.split('/');
+                        filename = parts.slice(3).join('/');
+                        nome = parts[parts.length - 1];
+                    } else {
+                        try {
+                            const u = new URL(url);
+                            const parts = u.pathname.split('/').filter(Boolean);
+                            nome = parts[parts.length - 1] || nome;
+                            filename = parts.join('/');
+                        } catch (e) {
+                            // não é uma URL válida, deixa como estava
+                        }
+                    }
+                }
+                return {
+                    tipo: b.tipo,
+                    subtipo: b.subtipo ?? "",
+                    url,
+                    nome,
+                    filename,
+                    type: b.type ?? b.content_type ?? "",
+                    created_at: b.created_at ?? b.createdAt ?? new Date().toISOString(),
+                    conteudo: b.conteudo
+                };
+            });
+            // Validação: não enviar sem marca / região
+            if (!marca || !tipoRegiao || !nomeRegiao) {
+                setSnackbarMsg('Por favor selecione Marca, Tipo de Região e Nome da Região antes de salvar.');
+                setSnackbarSeverity('warning');
+                setSnackbarOpen(true);
+                console.warn('[handleSubmit] Campos obrigatórios ausentes:', { marca, tipoRegiao, nomeRegiao });
+                return;
+            }
+
             const payload = {
                 nome_marca: marca,
                 blocos: blocosLimpos,
@@ -172,6 +214,7 @@ export default function Content() {
                 tipo_regiao: tipoRegiao,
                 nome_regiao: nomeRegiao,
             };
+            console.log('[handleSubmit] Payload enviado:', payload);
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -392,12 +435,13 @@ export default function Content() {
                                     disabled={camposDesativados || blocos.length >= 10}
                                     blocos={blocos}
                                     onRemoveBloco={handleRemoveBloco}
-                                    onEditBloco={(idx, tipo, conteudo) => {
-                                        setBlocos(prev =>
-                                            prev.map((b, i) => i === idx ? { tipo, conteudo } : b)
-                                        );
-                                    }}
+                                    onEditBloco={handleEditBloco}
                                     onAddBloco={handleAddBloco}
+                                    marca={marca}
+                                    tipoRegiao={tipoRegiao}
+                                    nomeRegiao={nomeRegiao}
+                                    subtipo={subtipo}
+                                    setSubtipo={setSubtipo}
                                 />
                                 <Copyright />
                             </form>
