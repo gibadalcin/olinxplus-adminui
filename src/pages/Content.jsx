@@ -162,50 +162,65 @@ export default function Content() {
             let token = null;
             if (user) token = await user.getIdToken();
             const updatedBlocos = [...blocos];
-            // prepara contador de uploads
-            const totalPending = updatedBlocos.reduce((acc, b) => acc + (b && b.pendingFile ? 1 : 0), 0);
+            // prepara contador de uploads (inclui pending files em blocos e em items de carousel)
+            const totalPending = updatedBlocos.reduce((acc, b) => {
+                let c = acc;
+                if (b && b.pendingFile) c += 1;
+                if (b && Array.isArray(b.items)) {
+                    c += b.items.reduce((ai, it) => ai + ((it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))) ? 1 : 0), 0);
+                }
+                return c;
+            }, 0);
             setUploadProgress({ done: 0, total: totalPending, errors: [] });
+            // Contadores locais para evitar ler estado assíncrono logo em seguida
+            let localDone = 0;
+            let localErrors = [];
 
+            // Simples: enviar cada arquivo pendente por ocorrência (bloco e items)
             for (let i = 0; i < updatedBlocos.length; i++) {
                 const b = updatedBlocos[i];
+                if (!b) continue;
+                // upload de pendingFile do próprio bloco (single image)
                 if (b && b.pendingFile) {
-                    // marca como uploading e atualiza UI
                     updatedBlocos[i] = { ...b, upload_status: 'uploading', upload_error: null };
                     setBlocos([...updatedBlocos]);
                     try {
                         const formData = new FormData();
-                        formData.append("file", b.pendingFile);
-                        formData.append("name", b.pendingFile.name);
-                        formData.append("subtipo", b.subtipo || "");
-                        formData.append("marca", marca || "");
-                        formData.append("tipo_regiao", tipoRegiao || "");
-                        formData.append("nome_regiao", nomeRegiao || "");
+                        formData.append('file', b.pendingFile);
+                        formData.append('name', b.pendingFile.name || 'file');
+                        formData.append('subtipo', b.subtipo || '');
+                        formData.append('marca', marca || '');
+                        formData.append('tipo_regiao', tipoRegiao || '');
+                        formData.append('nome_regiao', nomeRegiao || '');
                         const result = await uploadContentImage(formData, token);
                         if (result && result.success) {
                             const serverBloco = result.bloco || {};
-                            // atualiza o bloco com os metadados retornados pelo servidor
+                            // prefer signed_url retornado pelo backend quando disponível
+                            const resolvedUrl = result.signed_url || serverBloco.url || result.url || b.url || '';
+                            const resolvedNome = serverBloco.nome || result.nome || b.nome || serverBloco.name || '';
+                            const resolvedFilename = serverBloco.filename || result.filename || b.filename || '';
+                            const resolvedType = serverBloco.type || result.type || b.type || '';
                             updatedBlocos[i] = {
                                 ...b,
-                                url: serverBloco.url || result.url || b.url,
-                                nome: serverBloco.nome || b.nome || serverBloco.name || "",
-                                filename: serverBloco.filename || b.filename || "",
-                                type: serverBloco.type || b.type || "",
-                                created_at: serverBloco.created_at || b.created_at || new Date().toISOString(),
+                                url: resolvedUrl,
+                                nome: resolvedNome,
+                                filename: resolvedFilename,
+                                type: resolvedType,
+                                created_at: serverBloco.created_at || result.created_at || b.created_at || new Date().toISOString(),
                                 upload_status: 'done',
                                 upload_error: null,
                             };
-                            // remove pendingFile
-                            delete updatedBlocos[i].pendingFile;
+                            if (updatedBlocos[i].pendingFile) delete updatedBlocos[i].pendingFile;
                             setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
-                            // atualiza UI
+                            localDone += 1;
                             setBlocos([...updatedBlocos]);
                         } else {
                             console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor', result);
-                            // decide: continuar e enviar sem esse arquivo, ou abortar
-                            // vamos abortar o salvamento para evitar inconsistências
                             updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: result && result.error ? result.error : 'unknown' };
                             setBlocos([...updatedBlocos]);
-                            setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, reason: result && result.error ? result.error : 'unknown' }] }));
+                            const errObj = { index: i, reason: result && result.error ? result.error : 'unknown' };
+                            setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, errObj] }));
+                            localErrors.push(errObj);
                             setSnackbarMsg('Falha ao enviar arquivos de imagem. Veja detalhes no console e tente novamente.');
                             setSnackbarSeverity('error');
                             setSnackbarOpen(true);
@@ -222,12 +237,76 @@ export default function Content() {
                         return;
                     }
                 }
+                // upload de pending files dentro de carousel items
+                if (b && Array.isArray(b.items)) {
+                    for (let j = 0; j < b.items.length; j++) {
+                        const it = b.items[j];
+                        const pending = (it && (it.pendingFile || (it.meta && it.meta.pendingFile)));
+                        if (pending) {
+                            updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'uploading', upload_error: null };
+                            setBlocos([...updatedBlocos]);
+                            try {
+                                const fileObj = it.pendingFile || (it.meta && it.meta.pendingFile);
+                                const formData = new FormData();
+                                formData.append('file', fileObj);
+                                formData.append('name', fileObj.name || (it.meta && it.meta.nome) || 'item');
+                                formData.append('subtipo', it.subtipo || '');
+                                formData.append('marca', marca || '');
+                                formData.append('tipo_regiao', tipoRegiao || '');
+                                formData.append('nome_regiao', nomeRegiao || '');
+                                const result = await uploadContentImage(formData, token);
+                                if (result && result.success) {
+                                    const serverBloco = result.bloco || {};
+                                    const newItems = (updatedBlocos[i].items || []).slice();
+                                    const resolvedItUrl = result.signed_url || serverBloco.url || result.url || newItems[j].url || '';
+                                    const resolvedItNome = serverBloco.nome || result.nome || newItems[j].nome || serverBloco.name || '';
+                                    const resolvedItFilename = serverBloco.filename || result.filename || newItems[j].filename || '';
+                                    const resolvedItType = serverBloco.type || result.type || newItems[j].type || '';
+                                    newItems[j] = {
+                                        ...(newItems[j] || {}),
+                                        url: resolvedItUrl,
+                                        nome: resolvedItNome,
+                                        filename: resolvedItFilename,
+                                        type: resolvedItType,
+                                        created_at: serverBloco.created_at || result.created_at || newItems[j].created_at || new Date().toISOString(),
+                                    };
+                                    if (newItems[j].pendingFile) delete newItems[j].pendingFile;
+                                    if (newItems[j].meta && newItems[j].meta.pendingFile) delete newItems[j].meta.pendingFile;
+                                    updatedBlocos[i].items = newItems;
+                                    setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
+                                    localDone += 1;
+                                    setBlocos([...updatedBlocos]);
+                                } else {
+                                    console.warn('[handleSubmit] Falha ao enviar item pendente do carousel', result);
+                                    updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: result && result.error ? result.error : 'unknown' };
+                                    setBlocos([...updatedBlocos]);
+                                    setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, item: j, reason: result && result.error ? result.error : 'unknown' }] }));
+                                    setSnackbarMsg('Falha ao enviar arquivos do carousel. Veja console.');
+                                    setSnackbarSeverity('error');
+                                    setSnackbarOpen(true);
+                                    return;
+                                }
+                            } catch (err) {
+                                console.error('[handleSubmit] Erro ao enviar item pendente do carousel:', err);
+                                updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: String(err) };
+                                setBlocos([...updatedBlocos]);
+                                const errObj = { index: i, item: j, reason: String(err) };
+                                setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, errObj] }));
+                                localErrors.push(errObj);
+                                setSnackbarMsg('Erro ao enviar arquivos do carousel. Veja console.');
+                                setSnackbarSeverity('error');
+                                setSnackbarOpen(true);
+                                return;
+                            }
+                        }
+                    }
+                }
             }
             // após uploads pendentes concluídos
-            if (uploadProgress.total > 0) {
-                const done = uploadProgress.done;
-                const total = uploadProgress.total;
-                const errors = uploadProgress.errors || [];
+            if (totalPending > 0) {
+                const done = localDone;
+                const total = totalPending;
+                const errors = localErrors || [];
                 if (errors.length === 0) {
                     setSnackbarMsg(`Uploads concluídos: ${done}/${total}`);
                     setSnackbarSeverity('success');
@@ -241,21 +320,21 @@ export default function Content() {
             // grava blocos atualizados no estado antes de montar o payload
             setBlocos(updatedBlocos);
 
-            const blocosLimpos = blocos.map(b => {
-                // use os blocos atualizados (se setBlocos ainda não refletiu, prefer updatedBlocos)
-                const bb = updatedBlocos && updatedBlocos.length === blocos.length ? updatedBlocos[blocos.indexOf(b)] : b;
-                const url = b.url || b.conteudo || "";
+            // monta o payload usando os blocos atualizados (updatedBlocos) quando disponíveis
+            const sourceBlocos = (updatedBlocos && updatedBlocos.length) ? updatedBlocos : blocos;
+            const blocosLimpos = sourceBlocos.map(b => {
+                const url = (b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "";
                 // Garante nomes exatos esperados pelo backend
-                let nome = b.nome || b.name || "";
-                let filename = b.filename || "";
+                let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
+                let filename = (b && b.filename) ? b.filename : "";
                 if (!filename && url) {
-                    if (url.startsWith("gs://")) {
-                        const parts = url.split('/');
+                    if (String(url).startsWith("gs://")) {
+                        const parts = String(url).split('/');
                         filename = parts.slice(3).join('/');
-                        nome = parts[parts.length - 1];
+                        nome = parts[parts.length - 1] || nome;
                     } else {
                         try {
-                            const u = new URL(url);
+                            const u = new URL(String(url));
                             const parts = u.pathname.split('/').filter(Boolean);
                             nome = parts[parts.length - 1] || nome;
                             filename = parts.join('/');
@@ -264,16 +343,54 @@ export default function Content() {
                         }
                     }
                 }
-                return {
-                    tipo: b.tipo,
-                    subtipo: b.subtipo ?? "",
+
+                // map items (carousel) when present
+                let items = undefined;
+                if (Array.isArray(b?.items) && b.items.length > 0) {
+                    items = b.items.map(it => {
+                        const itUrl = (it && (it.url || it.conteudo)) ? (it.url || it.conteudo) : "";
+                        let itNome = (it && (it.nome || (it.meta && it.meta.nome))) ? (it.nome || (it.meta && it.meta.nome)) : "";
+                        let itFilename = (it && (it.filename || (it.meta && it.meta.filename))) ? (it.filename || (it.meta && it.meta.filename)) : "";
+                        if (!itFilename && itUrl) {
+                            if (String(itUrl).startsWith("gs://")) {
+                                const parts = String(itUrl).split('/');
+                                itFilename = parts.slice(3).join('/');
+                                itNome = parts[parts.length - 1] || itNome;
+                            } else {
+                                try {
+                                    const u = new URL(String(itUrl));
+                                    const parts = u.pathname.split('/').filter(Boolean);
+                                    itNome = parts[parts.length - 1] || itNome;
+                                    itFilename = parts.join('/');
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                        }
+                        return {
+                            subtipo: it?.subtipo ?? (it?.meta && it.meta.subtipo) ?? "",
+                            url: itUrl,
+                            nome: itNome,
+                            filename: itFilename,
+                            type: it?.type ?? (it?.meta && it.meta.type) ?? "",
+                            created_at: it?.created_at ?? it?.createdAt ?? (it?.meta && it.meta.created_at) ?? new Date().toISOString(),
+                            conteudo: it?.conteudo ?? (it?.meta && it.meta.conteudo) ?? ""
+                        };
+                    });
+                }
+
+                const blocoObj = {
+                    tipo: b?.tipo,
+                    subtipo: b?.subtipo ?? "",
                     url,
                     nome,
                     filename,
-                    type: b.type ?? b.content_type ?? "",
-                    created_at: b.created_at ?? b.createdAt ?? new Date().toISOString(),
-                    conteudo: b.conteudo
+                    type: b?.type ?? b?.content_type ?? "",
+                    created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
+                    conteudo: b?.conteudo
                 };
+                if (items) blocoObj.items = items;
+                return blocoObj;
             });
             // Validação: não enviar sem marca / região
             if (!marca || !tipoRegiao || !nomeRegiao) {
@@ -292,6 +409,8 @@ export default function Content() {
                 tipo_regiao: tipoRegiao,
                 nome_regiao: nomeRegiao,
             };
+            // DEBUG: inspecionar blocos antes da validação final de blob:
+            // inspeção: dados prontos para validação (debug removido em produção)
             // Validação extra: não permitir envio de URLs locais (blob:)
             const invalidBlocks = (payload.blocos || []).map((b, idx) => {
                 const u = (b.url || "") + "";
@@ -331,21 +450,27 @@ export default function Content() {
             if (data.action === "deleted") {
                 setSnackbarMsg("Conteúdo excluído com sucesso!");
                 setSnackbarSeverity("error"); // vermelho para exclusão
+                // limpa campos após exclusão
+                setLatitude("");
+                setLongitude("");
+                setNomeRegiao("");
+                setTipoRegiao("");
+                setBlocos([]);
+                setBlocosOriginais([]);
+                setTipoBloco("");
             } else if (data.action === "saved") {
                 setSnackbarMsg("Conteúdo salvo com sucesso!");
                 setSnackbarSeverity("success");
+                // manter os blocos salvos visíveis e marcar como originais
+                const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
+                setBlocos(savedBlocos);
+                setBlocosOriginais(savedBlocos);
+                // não limpar latitude/longitude/tipoRegiao/nomeRegiao para permanecer na mesma página
             } else {
                 setSnackbarMsg("Operação realizada!");
                 setSnackbarSeverity("success");
             }
             setSnackbarOpen(true);
-            // Limpa todos os campos após salvar/excluir para evitar confusão
-            setLatitude("");
-            setLongitude("");
-            setNomeRegiao("");
-            setTipoRegiao("");
-            setBlocos([]);
-            setTipoBloco("");
         } catch (err) {
             console.error('Erro inesperado ao cadastrar conteúdo:', err);
             setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
