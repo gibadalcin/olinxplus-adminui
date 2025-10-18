@@ -188,6 +188,9 @@ export default function Content() {
                     try {
                         const formData = new FormData();
                         formData.append('file', b.pendingFile);
+                        // include deterministic temp_id if present to map upload response
+                        if (b.temp_id) formData.append('temp_id', b.temp_id);
+                        else if (b.meta && b.meta.temp_id) formData.append('temp_id', b.meta.temp_id);
                         formData.append('name', b.pendingFile.name || 'file');
                         formData.append('subtipo', b.subtipo || '');
                         formData.append('marca', marca || '');
@@ -252,6 +255,9 @@ export default function Content() {
                                 const fileObj = it.pendingFile || (it.meta && it.meta.pendingFile);
                                 const formData = new FormData();
                                 formData.append('file', fileObj);
+                                // include deterministic temp_id for carousel item if present
+                                if (it.temp_id) formData.append('temp_id', it.temp_id);
+                                else if (it.meta && it.meta.temp_id) formData.append('temp_id', it.meta.temp_id);
                                 formData.append('name', fileObj.name || (it.meta && it.meta.nome) || 'item');
                                 formData.append('subtipo', it.subtipo || '');
                                 formData.append('marca', marca || '');
