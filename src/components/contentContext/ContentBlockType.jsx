@@ -108,18 +108,16 @@ export default function ContentBlockType({
     // Validação por bloco que retorna razão caso inválido, ou null se válido
     function blockInvalidReason(b) {
         if (!b) return 'Bloco ausente';
-        const tipo = b.tipoSelecionado || b.tipo;
-        if (!tipo) return 'Tipo não selecionado';
-        if (tipo === 'imagem') {
-            if ((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile)) return null;
-            return 'Imagem sem URL/arquivo';
-        }
-        if (tipo === 'carousel') {
-            if (!Array.isArray(b.items) || b.items.length === 0) return 'Carousel sem items';
-            const ok = b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
-            return ok ? null : 'Carousel sem mídias válidas';
-        }
-        if (b.conteudo && String(b.conteudo).trim() !== '') return null;
+        // Heurística: se houver URL, pendingFile ou items com mídias, consideramos válido
+        try {
+            if ((b.url && String(b.url).trim() !== '') || (b.pendingFile)) return null;
+            if (b.conteudo && String(b.conteudo).trim() !== '') return null;
+            if (Array.isArray(b.items) && b.items.length > 0) {
+                const ok = b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
+                if (ok) return null;
+                return 'Carousel sem mídias válidas';
+            }
+        } catch (e) { /* ignore and fallthrough */ }
         return 'Conteúdo vazio';
     }
 
@@ -261,7 +259,7 @@ export default function ContentBlockType({
                                         (subtipoImagem === 'video' || (uploadedMeta && uploadedMeta.type && uploadedMeta.type.startsWith && uploadedMeta.type.startsWith('video'))) ? (
                                             signedPreviewUrl ? <video src={signedPreviewUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ color: '#999' }}>Carregando vídeo...</div>
                                         ) : (
-                                            <ContentImagePreview gsUrl={uploadedMeta.url} />
+                                            <ContentImagePreview gsUrl={uploadedMeta.url} signedUrl={uploadedMeta && uploadedMeta.signed_url} />
                                         )
                                     ) : (
                                         (subtipoImagem === 'video' || (uploadedMeta && uploadedMeta.type && uploadedMeta.type.startsWith && uploadedMeta.type.startsWith('video'))) ? (
@@ -320,8 +318,8 @@ export default function ContentBlockType({
                     temp_id: genTempId(),
                 };
                 handleCarouselImgChange(idx, "meta", meta);
-                // mensagem UX removida: não usar alert() bloqueante aqui
             }
+
             return (
                 <div style={{ width: "100%" }}>
                     {carouselImagens.map((img, idx) => (
@@ -337,6 +335,7 @@ export default function ContentBlockType({
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
+
                             {/* input file escondido para cada item do carousel */}
                             <input
                                 id={`carousel-file-${idx}`}
@@ -354,7 +353,7 @@ export default function ContentBlockType({
                             >
                                 {img.subtipo ? 'Escolher arquivo' : 'Tipo indefinido'}
                             </button>
-                            {/* Mostrar apenas o nome do arquivo/video. Permitir edição via botão 'Editar URL' */}
+
                             <div style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
                                 {!showUrlEditMap[idx] ? (
                                     <input
@@ -362,38 +361,42 @@ export default function ContentBlockType({
                                         placeholder="Arquivo"
                                         value={(img.meta && (img.meta.nome || img.meta.filename)) || (img.url ? String(img.url).split('/').pop() : '')}
                                         readOnly
-                                        style={{ flex: 1, padding: 6, borderRadius: 6, background: '#f5f5f5', color: '#333' }}
-                                        disabled={disabled}
+                                        style={{ flex: 1, padding: '6px', borderRadius: 6, background: '#f5f5f5' }}
                                     />
                                 ) : (
                                     <input
                                         type="text"
-                                        placeholder="URL da mídia"
-                                        value={img.url}
+                                        value={img.url || ''}
                                         onChange={e => handleCarouselImgChange(idx, "url", e.target.value)}
-                                        style={{ flex: 1, padding: 6, borderRadius: 6 }}
-                                        disabled={disabled}
+                                        style={{ flex: 1, padding: '6px', borderRadius: 6 }}
                                     />
                                 )}
+
                                 <button
                                     type="button"
                                     onClick={() => setShowUrlEditMap(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                                    style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#777', color: '#fff', cursor: 'pointer' }}
+                                    style={{ ...BTN.base, ...BTN.neutral, ...BTN.small }}
                                 >
                                     {showUrlEditMap[idx] ? 'Fechar' : 'Editar URL'}
                                 </button>
                             </div>
+
                             {img.url && (
                                 img.subtipo === 'video' ? (
                                     <video src={img.url} style={{ maxWidth: isMobile ? 160 : 80, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} controls />
                                 ) : (
-                                    <img src={img.url} alt="preview" style={{ maxWidth: isMobile ? 160 : 60, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} />
+                                    (img.url.startsWith && img.url.startsWith('gs://')) ? (
+                                        <ContentImagePreview gsUrl={img.url} signedUrl={img.signed_url || (img.meta && img.meta.signed_url)} isVideo={img.subtipo === 'video'} />
+                                    ) : (
+                                        <img src={img.url} alt="preview" style={{ maxWidth: isMobile ? 160 : 60, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} />
+                                    )
                                 )
                             )}
+
                             <button type="button" onClick={() => handleRemoveCarouselImg(idx)} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "6px 10px", cursor: "pointer" }} disabled={carouselImagens.length === 1}>-</button>
                         </div>
-                    ))
-                    }
+                    ))}
+
                     <button
                         type="button"
                         onClick={handleAddCarouselImg}
@@ -412,7 +415,7 @@ export default function ContentBlockType({
                     >
                         {(Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'Limite atingido (4)' : 'Adicionar imagem'}
                     </button>
-                </div >
+                </div>
             );
         }
         return (
@@ -468,21 +471,23 @@ export default function ContentBlockType({
                         }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: bloco.tipoSelecionado === 'carousel' ? 'column-reverse' : 'row', width: isMobile ? '100%' : 'auto' }}>
                             {(() => {
-                                const tipoAtual = bloco.tipoSelecionado || bloco.tipo;
-                                // Somente renderiza miniaturas para blocos de imagem ou carousel
-                                if (tipoAtual === 'carousel' && Array.isArray(bloco.items)) {
+                                // Detect by content instead of relying on the human-readable `tipo` text
+                                const isCarousel = Array.isArray(bloco.items) && bloco.items.length > 0;
+                                const hasUrl = bloco.url && String(bloco.url).trim() !== '';
+                                const hasPending = bloco.pendingFile || (Array.isArray(bloco.items) && bloco.items.some(it => it && (it.meta && it.meta.pendingFile || it.pendingFile)));
+                                if (isCarousel) {
                                     return (
                                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                             {bloco.items.map((it, i) => (
                                                 <div key={i} style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    {it && it.url ? (
-                                                        (it.url.startsWith && it.url.startsWith('gs://')) ? (
-                                                            <ContentImagePreview gsUrl={it.url} isVideo={it.subtipo === 'video'} />
+                                                    {it && (it.url || (it.meta && it.meta.pendingFile)) ? (
+                                                        (it.url && it.url.startsWith && it.url.startsWith('gs://')) ? (
+                                                            <ContentImagePreview gsUrl={it.url} isVideo={it.subtipo === 'video'} signedUrl={it.signed_url || (it.meta && it.meta.signed_url)} />
                                                         ) : (
                                                             it.subtipo === 'video' ? (
-                                                                <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                <video src={it.url || (it.meta && it.meta.url)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                             ) : (
-                                                                <img src={it.url} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                <img src={it.url || (it.meta && it.meta.url)} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                             )
                                                         )
                                                     ) : (
@@ -493,22 +498,27 @@ export default function ContentBlockType({
                                         </div>
                                     );
                                 }
-                                if (tipoAtual === 'imagem') {
-                                    if (bloco.url) {
+                                if (hasUrl || hasPending) {
+                                    if (hasUrl) {
                                         return bloco.url.startsWith && bloco.url.startsWith('gs://') ? (
-                                            <ContentImagePreview gsUrl={bloco.url} />
+                                            <ContentImagePreview gsUrl={bloco.url} signedUrl={bloco.signed_url} />
                                         ) : (
                                             <img src={bloco.url} alt="thumb" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
                                         );
                                     }
+                                    // hasPending but no url: show placeholder
                                     return (
                                         <div style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
+                                            <div style={{ color: '#999', fontSize: 12 }}>Upload pendente</div>
                                         </div>
                                     );
                                 }
-                                // Para outros tipos (texto, título etc.) não renderiza miniatura
-                                return null;
+                                // No media found
+                                return (
+                                    <div style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
+                                    </div>
+                                );
                             })()}
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -866,11 +876,16 @@ export default function ContentBlockType({
 }
 
 // Componente para buscar e exibir a signed URL de uma imagem de conteúdo
-function ContentImagePreview({ gsUrl, isVideo }) {
-    const [signedUrl, setSignedUrl] = useState(null);
+function ContentImagePreview({ gsUrl, isVideo, signedUrl: signedUrlProp }) {
+    const [signedUrl, setSignedUrl] = useState(signedUrlProp || null);
     useEffect(() => {
         let isMounted = true;
         async function fetchUrl() {
+            // if parent provided signedUrl prop, prefer it
+            if (signedUrlProp) {
+                if (isMounted) setSignedUrl(signedUrlProp);
+                return;
+            }
             if (!gsUrl) return;
             try {
                 const url = await getSignedContentUrl(gsUrl);
@@ -879,7 +894,7 @@ function ContentImagePreview({ gsUrl, isVideo }) {
         }
         fetchUrl();
         return () => { isMounted = false; };
-    }, [gsUrl]);
+    }, [gsUrl, signedUrlProp]);
     if (!signedUrl) return <span>Carregando mídia...</span>;
     if (isVideo) return <video src={signedUrl} controls style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
     return <img src={signedUrl} alt="preview" style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;

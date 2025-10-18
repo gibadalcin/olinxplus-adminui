@@ -18,6 +18,7 @@ import { useImagens } from "../hooks/useImages";
 import ContentActions from "../components/contentContext/ContentActions";
 import ContentBlockType from "../components/contentContext/ContentBlockType"; // import do novo componente
 import ConfirmModal from "../components/globalContext/ConfirmModal";
+import DeletePreviewModal from "../components/globalContext/DeletePreviewModal";
 import BlockTypeSelect from "../components/contentContext/BlockTypeSelect";
 import MarcaSelect from "../components/contentContext/MarcaSelect";
 import { useBlocos } from "../hooks/useBlocos";
@@ -148,6 +149,69 @@ export default function Content() {
     const handleSnackbarClose = (event, reason) => {
         if (reason === 'clickaway') return;
         setSnackbarOpen(false);
+    };
+
+    // State for delete preview modal
+    const [showDeletePreview, setShowDeletePreview] = useState(false);
+    const [pendingDeleteList, setPendingDeleteList] = useState([]);
+    const [pendingSave, setPendingSave] = useState(null); // { payload, token }
+
+    const handleConfirmDeletePreview = async () => {
+        try {
+            if (!pendingSave) return;
+            const { payload, token } = pendingSave;
+            const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const contentType = res.headers.get('content-type');
+            if (!res.ok || !contentType || !contentType.includes('application/json')) {
+                const errorText = await res.text();
+                console.error('Erro ao cadastrar conteúdo (confirm):', { status: res.status, contentType, errorText, payload });
+                setSnackbarMsg('Erro ao cadastrar conteúdo!');
+                setSnackbarSeverity("error");
+                setSnackbarOpen(true);
+                setShowDeletePreview(false);
+                setPendingSave(null);
+                return;
+            }
+            const data = await res.json();
+            // reuse existing handling logic: set snackbars/state accordingly
+            if (data.action === "deleted") {
+                setSnackbarMsg("Conteúdo excluído com sucesso!");
+                setSnackbarSeverity("error");
+                setLatitude("");
+                setLongitude("");
+                setNomeRegiao("");
+                setTipoRegiao("");
+                setBlocos([]);
+                setBlocosOriginais([]);
+                setTipoBloco("");
+                setIsExistingContent(false);
+            } else if (data.action === "saved") {
+                setSnackbarMsg("Conteúdo salvo com sucesso!");
+                setSnackbarSeverity("success");
+                const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : payload.blocos;
+                setBlocos(savedBlocos);
+                setBlocosOriginais(savedBlocos);
+                setIsExistingContent(true);
+            } else {
+                setSnackbarMsg("Operação realizada!");
+                setSnackbarSeverity("success");
+            }
+            setSnackbarOpen(true);
+            setShowDeletePreview(false);
+            setPendingSave(null);
+        } catch (err) {
+            console.error('Erro inesperado ao confirmar delete preview:', err);
+            setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
+            setSnackbarSeverity("error");
+            setSnackbarOpen(true);
+            setShowDeletePreview(false);
+            setPendingSave(null);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -475,6 +539,23 @@ export default function Content() {
                 return;
             }
             const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+            // FIRST: dry-run to compute files that would be deleted
+            const dryRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo?dry_run=true`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+            });
+            const dryJson = await dryRes.json();
+            if (dryRes.ok && dryJson && dryJson.action === 'dry_run') {
+                // show modal to confirm deletions
+                setPendingDeleteList(dryJson.to_delete || []);
+                setShowDeletePreview(true);
+                // store payload and token to be used on confirm
+                setPendingSave({ payload, token });
+                return;
+            }
+
+            // fallback: if dry-run not supported or returned unexpected, proceed with a real save
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
                 method: "POST",
                 headers,
@@ -824,6 +905,14 @@ export default function Content() {
                     {/* Botão dashboard e salvar podem ser adicionados aqui se existirem como componentes */}
                 </div>
             </div>
+            {/* Modal that previews files that will be deleted by the pending save */}
+            <DeletePreviewModal
+                open={showDeletePreview}
+                toDelete={pendingDeleteList}
+                onConfirm={handleConfirmDeletePreview}
+                onCancel={() => { setShowDeletePreview(false); setPendingSave(null); setPendingDeleteList([]); }}
+            />
+
             <ConfirmModal
                 open={showModal}
                 onConfirm={handleConfirmTrocaMarca}
