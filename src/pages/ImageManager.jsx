@@ -227,7 +227,7 @@ export default function ImageManager() {
             }}
             disabled={loading}
           >
-            {showAllAdmins ? "Modo Master" : "Modo Admin"}
+            {showAllAdmins ? "Modo Admin" : "Modo Master"}
           </CustomButton>
         </div>
       )}
