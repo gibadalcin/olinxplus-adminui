@@ -220,11 +220,32 @@ export async function fetchImagesByOwner(ownerId, token) {
 }
 
 export async function uploadContentImage(formData, token) {
-  const res = await fetch(`${API_BASE_URL}/add-content-image/`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData
-  });
-  if (!res.ok) return { success: false };
-  return await res.json();
+  try {
+    const res = await fetch(`${API_BASE_URL}/add-content-image/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    if (res.ok) {
+      // tenta ler JSON normalmente
+      try {
+        return await res.json();
+      } catch (e) {
+        return { success: false, status: res.status, error: 'Resposta inválida do servidor (não é JSON)' };
+      }
+    }
+    // Em caso de erro, tenta decodificar corpo para ajudar debug
+    const contentType = res.headers.get('content-type') || '';
+    let errBody = null;
+    try {
+      if (contentType.includes('application/json')) errBody = await res.json();
+      else errBody = await res.text();
+    } catch (e) {
+      errBody = `Falha ao ler corpo de erro: ${String(e)}`;
+    }
+    return { success: false, status: res.status, error: errBody };
+  } catch (err) {
+    console.error('Erro inesperado ao chamar uploadContentImage:', err);
+    return { success: false, error: String(err) };
+  }
 }
