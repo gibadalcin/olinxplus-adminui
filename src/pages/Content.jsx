@@ -237,11 +237,16 @@ export default function Content() {
             const updatedBlocos = [...blocos];
             // (simplified) não usamos matching complexo por temp_id; atualizamos os blocos diretamente
             // prepara contador de uploads (inclui pending files em blocos e em items de carousel)
+            const isFileLike = (x) => {
+                try {
+                    return x && typeof x === 'object' && (typeof x.name === 'string' || typeof x.size === 'number');
+                } catch (e) { return false; }
+            };
             const totalPending = updatedBlocos.reduce((acc, b) => {
                 let c = acc;
-                if (b && b.pendingFile) c += 1;
+                if (b && isFileLike(b.pendingFile)) c += 1;
                 if (b && Array.isArray(b.items)) {
-                    c += b.items.reduce((ai, it) => ai + ((it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))) ? 1 : 0), 0);
+                    c += b.items.reduce((ai, it) => ai + ((it && (isFileLike(it.pendingFile) || (it.meta && isFileLike(it.meta.pendingFile)))) ? 1 : 0), 0);
                 }
                 return c;
             }, 0);
@@ -255,7 +260,8 @@ export default function Content() {
                 const b = updatedBlocos[i];
                 if (!b) continue;
                 // upload de pendingFile do próprio bloco (single image)
-                if (b && b.pendingFile) {
+                // only upload single-image pendingFile when it's a File/Blob, not a boolean flag used by carousel blocks
+                if (b && isFileLike(b.pendingFile)) {
                     updatedBlocos[i] = { ...b, upload_status: 'uploading', upload_error: null };
                     setBlocos([...updatedBlocos]);
                     try {
@@ -269,7 +275,15 @@ export default function Content() {
                         formData.append('marca', marca || '');
                         formData.append('tipo_regiao', tipoRegiao || '');
                         formData.append('nome_regiao', nomeRegiao || '');
-                        const result = await uploadContentImage(formData, token);
+                        // tentativa com retry simples (até 2 tentativas) para reduzir falhas transitórias (422 etc.)
+                        let result = null;
+                        let attempts = 0;
+                        while (attempts < 2) {
+                            attempts += 1;
+                            result = await uploadContentImage(formData, token);
+                            if (result && result.success) break;
+                            console.warn(`[handleSubmit] tentativa ${attempts} falhou para upload de bloco (index ${i})`, result);
+                        }
                         if (result && result.success) {
                             const serverBloco = result.bloco || {};
                             // preferir URL permanente (serverBloco.url ou result.url) para persistência;
@@ -294,13 +308,15 @@ export default function Content() {
                             localDone += 1;
                             setBlocos([...updatedBlocos]);
                         } else {
-                            console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor', result);
-                            updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: result && result.error ? result.error : 'unknown' };
+                            console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor após retries', result);
+                            updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: result && (result.error || JSON.stringify(result)) ? (result.error || JSON.stringify(result)) : 'unknown' };
                             setBlocos([...updatedBlocos]);
-                            const errObj = { index: i, reason: result && result.error ? result.error : 'unknown' };
+                            const errObj = { index: i, reason: result && result.error ? result.error : JSON.stringify(result) };
                             setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, errObj] }));
                             localErrors.push(errObj);
-                            setSnackbarMsg('Falha ao enviar arquivos de imagem. Veja detalhes no console e tente novamente.');
+                            // show server-provided message when possible
+                            const serverMsg = result && result.error ? (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)) : 'Falha ao enviar arquivo';
+                            setSnackbarMsg(`Falha ao enviar arquivo: ${serverMsg}`);
                             setSnackbarSeverity('error');
                             setSnackbarOpen(true);
                             return;
@@ -336,7 +352,15 @@ export default function Content() {
                                 formData.append('marca', marca || '');
                                 formData.append('tipo_regiao', tipoRegiao || '');
                                 formData.append('nome_regiao', nomeRegiao || '');
-                                const result = await uploadContentImage(formData, token);
+                                // retry simples para uploads de item do carousel
+                                let result = null;
+                                let attempts = 0;
+                                while (attempts < 2) {
+                                    attempts += 1;
+                                    result = await uploadContentImage(formData, token);
+                                    if (result && result.success) break;
+                                    console.warn(`[handleSubmit] tentativa ${attempts} falhou para upload de item carousel (index ${i} item ${j})`, result);
+                                }
                                 if (result && result.success) {
                                     const serverBloco = result.bloco || {};
                                     const newItems = (updatedBlocos[i].items || []).slice();
@@ -356,16 +380,24 @@ export default function Content() {
                                     if (newItems[j].pendingFile) delete newItems[j].pendingFile;
                                     if (newItems[j].meta && newItems[j].meta.pendingFile) delete newItems[j].meta.pendingFile;
                                     updatedBlocos[i].items = newItems;
+                                    // se não houver mais itens com pendingFile/ meta.pendingFile, remover pendingFile no bloco pai
+                                    try {
+                                        const anyPendingLeft = Array.isArray(newItems) && newItems.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
+                                        if (!anyPendingLeft && updatedBlocos[i].pendingFile) {
+                                            delete updatedBlocos[i].pendingFile;
+                                        }
+                                    } catch (e) { }
                                     // metadados já aplicados diretamente ao item acima
                                     setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
                                     localDone += 1;
                                     setBlocos([...updatedBlocos]);
                                 } else {
-                                    console.warn('[handleSubmit] Falha ao enviar item pendente do carousel', result);
-                                    updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: result && result.error ? result.error : 'unknown' };
+                                    console.warn('[handleSubmit] Falha ao enviar item pendente do carousel após retries', result);
+                                    updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: result && (result.error || JSON.stringify(result)) ? (result.error || JSON.stringify(result)) : 'unknown' };
                                     setBlocos([...updatedBlocos]);
-                                    setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, item: j, reason: result && result.error ? result.error : 'unknown' }] }));
-                                    setSnackbarMsg('Falha ao enviar arquivos do carousel. Veja console.');
+                                    setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, item: j, reason: result && result.error ? result.error : JSON.stringify(result) }] }));
+                                    const serverMsg = result && result.error ? (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)) : 'Falha ao enviar item do carousel';
+                                    setSnackbarMsg(`Falha ao enviar item do carousel: ${serverMsg}`);
                                     setSnackbarSeverity('error');
                                     setSnackbarOpen(true);
                                     return;
@@ -402,6 +434,17 @@ export default function Content() {
                 }
             }
             // grava blocos atualizados no estado antes de montar o payload
+            // sanitiza flags de pendingFile a nível de bloco para evitar badges persistentes
+            try {
+                for (let k = 0; k < updatedBlocos.length; k++) {
+                    const blk = updatedBlocos[k];
+                    if (!blk) continue;
+                    if (Array.isArray(blk.items) && blk.items.length > 0) {
+                        const anyPending = blk.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
+                        if (!anyPending && blk.pendingFile) delete blk.pendingFile;
+                    }
+                }
+            } catch (e) { }
             setBlocos(updatedBlocos);
 
             // prepara sourceBlocos a partir dos blocos atualizados
@@ -409,8 +452,33 @@ export default function Content() {
             // Simples: reconstruir blocosLimpos diretamente a partir de updatedBlocos (sem heurísticas complexas)
             const blocosLimpos = sourceBlocos.map(b => {
                 const tipoAtual = (b && (b.tipoSelecionado || b.tipo)) || '';
-                // Preencher `url` apenas para blocos de mídia (imagem, carousel, video).
-                const isMedia = ['imagem', 'carousel', 'video'].includes(String(tipoAtual).toLowerCase());
+                // Heurística robusta para detectar blocos de mídia:
+                // - tipoSelecionado explícito (imagem/carousel/video)
+                // - label `tipo` que começa com 'imagem'/'video'/'carousel'
+                // - presença de url/conteudo (gs://, /, http, blob:)
+                // - presença de filename/nome/type
+                // - items array (carousel)
+                let isMedia = false;
+                try {
+                    const tipoSel = (b && b.tipoSelecionado) || '';
+                    if (typeof tipoSel === 'string' && ['imagem', 'carousel', 'video'].includes(tipoSel.toLowerCase())) {
+                        isMedia = true;
+                    }
+                    const tipoLabel = (b && b.tipo) || '';
+                    if (!isMedia && typeof tipoLabel === 'string') {
+                        const tl = tipoLabel.toLowerCase();
+                        if (tl.startsWith('imagem') || tl.startsWith('video') || tl.startsWith('carousel')) isMedia = true;
+                    }
+                    if (!isMedia) {
+                        const urlCand = (b && (b.url || b.conteudo)) || '';
+                        if (urlCand && String(urlCand).trim() !== '') {
+                            const s = String(urlCand);
+                            if (s.startsWith('gs://') || s.startsWith('/') || s.startsWith('http') || s.startsWith('blob:')) isMedia = true;
+                        }
+                    }
+                    if (!isMedia && (b && (b.filename || b.nome || b.type))) isMedia = true;
+                    if (!isMedia && Array.isArray(b?.items) && b.items.length > 0) isMedia = true;
+                } catch (e) { /* fallback: not media */ }
                 const url = isMedia ? ((b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "") : "";
                 // Garante nomes exatos esperados pelo backend
                 let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
@@ -692,15 +760,19 @@ export default function Content() {
     function isBlockIncomplete(b) {
         if (!b) return true;
         if (!b.tipo && !b.tipoSelecionado) return true;
-        const tipo = b.tipoSelecionado || b.tipo;
+        const tipoRaw = (b.tipoSelecionado || b.tipo || '').toString().toLowerCase();
         // Imagem: aceita se houver url (gs://, / ou blob:) ou conteudo (caso o backend use conteudo)
-        if (tipo === 'imagem') {
+        if (tipoRaw === 'imagem' || tipoRaw.startsWith('imagem')) {
             return !((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile));
         }
         // Carousel: precisa ter array items com ao menos um item válido (url ou pendingFile)
-        if (tipo === 'carousel') {
+        if (tipoRaw === 'carousel' || tipoRaw.startsWith('carousel')) {
             if (!Array.isArray(b.items) || b.items.length === 0) return true;
             return !b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
+        }
+        // Video type
+        if (tipoRaw === 'video' || tipoRaw.startsWith('video')) {
+            return !((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile));
         }
         // Outros tipos de bloco (texto etc.): requerem conteudo não-vazio
         return !(b.conteudo && String(b.conteudo).trim() !== '');

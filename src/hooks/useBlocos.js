@@ -54,6 +54,13 @@ export function useBlocos(limite = 10) {
           type: meta.type || meta.content_type || "",
           created_at: meta.created_at || meta.createdAt || new Date().toISOString(),
         };
+        // Preserve pending upload info when meta contains a pendingFile (e.g., objectURL + File)
+        if (meta && meta.pendingFile) {
+          blocoFromServer.pendingFile = meta.pendingFile;
+        }
+        if (meta && meta.temp_id) {
+          blocoFromServer.temp_id = meta.temp_id;
+        }
         novoBloco = blocoFromServer;
       } else {
       // usa metadados do upload quando disponíveis, senão extrai da URL
@@ -95,6 +102,11 @@ export function useBlocos(limite = 10) {
         })),
         created_at: new Date().toISOString(),
       };
+      // Mark block-level pendingFile if any item has a pendingFile
+      try {
+        const anyPending = Array.isArray(novoBloco.items) && novoBloco.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
+        if (anyPending) novoBloco.pendingFile = true;
+      } catch (e) { }
     } else {
       novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
     }
@@ -127,6 +139,12 @@ export function useBlocos(limite = 10) {
           type: meta.type || meta.content_type || bloco.type || "",
           created_at: meta.created_at || meta.createdAt || bloco.created_at || new Date().toISOString(),
         };
+        if (meta && meta.pendingFile) {
+          novosBlocos[idx].pendingFile = meta.pendingFile;
+        }
+        if (meta && meta.temp_id) {
+          novosBlocos[idx].temp_id = meta.temp_id;
+        }
       } else {
       const nome = (meta && meta.nome) || bloco.nome || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
       const filename = (meta && meta.filename) || bloco.filename || (conteudo && conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
@@ -159,6 +177,11 @@ export function useBlocos(limite = 10) {
           filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
         })),
       };
+      // propagate pending state if any item contains pendingFile
+      try {
+        const anyPending = Array.isArray(novosBlocos[idx].items) && novosBlocos[idx].items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
+        if (anyPending) novosBlocos[idx].pendingFile = true;
+      } catch (e) { }
     } else {
       novosBlocos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };
     }

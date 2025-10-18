@@ -469,7 +469,7 @@ export default function ContentBlockType({
                             flexDirection: isMobile ? 'column' : 'row',
                             gap: isMobile ? 8 : 0
                         }}>
-                        <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: bloco.tipoSelecionado === 'carousel' ? 'column-reverse' : 'row', width: isMobile ? '100%' : 'auto' }}>
+                        <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: 'column-reverse', width: isMobile ? '100%' : 'auto' }}>
                             {(() => {
                                 // Only render thumbnails for media blocks (imagem, carousel, video) or when the bloco has media-like properties
                                 const tipo = (bloco && (bloco.tipoSelecionado || bloco.tipo || '')).toLowerCase();
@@ -908,6 +908,6 @@ function ContentImagePreview({ gsUrl, isVideo, signedUrl: signedUrlProp }) {
         return () => { isMounted = false; };
     }, [gsUrl, signedUrlProp]);
     if (!signedUrl) return <span>Carregando mídia...</span>;
-    if (isVideo) return <video src={signedUrl} controls style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
-    return <img src={signedUrl} alt="preview" style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
+    if (isVideo) return <video src={signedUrl} controls style={{ maxWidth: "100%", maxHeight: 100, marginBottom: 8, borderRadius: 8 }} />;
+    return <img src={signedUrl} alt="preview" style={{ maxWidth: "100%", maxHeight: 100, marginBottom: 8, borderRadius: 8 }} />;
 }

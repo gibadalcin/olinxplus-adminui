@@ -221,9 +221,13 @@ export async function fetchImagesByOwner(ownerId, token) {
 
 export async function uploadContentImage(formData, token) {
   try {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    // Ask the server for JSON responses
+    headers['Accept'] = 'application/json';
     const res = await fetch(`${API_BASE_URL}/add-content-image/`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
       body: formData
     });
     if (res.ok) {
@@ -243,6 +247,7 @@ export async function uploadContentImage(formData, token) {
     } catch (e) {
       errBody = `Falha ao ler corpo de erro: ${String(e)}`;
     }
+    console.error('[uploadContentImage] upload failed', { status: res.status, contentType, errBody });
     return { success: false, status: res.status, error: errBody };
   } catch (err) {
     console.error('Erro inesperado ao chamar uploadContentImage:', err);
