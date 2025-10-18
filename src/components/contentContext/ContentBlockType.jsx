@@ -514,6 +514,13 @@ export default function ContentBlockType({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <strong style={{ color: "#4cd964" }}>{bloco.tipo}</strong>
                                     {(() => {
+                                        const hasPending = (bloco && bloco.pendingFile) || (Array.isArray(bloco.items) && bloco.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile)))));
+                                        if (!hasPending) return null;
+                                        return (
+                                            <span style={{ background: '#ffcc00', color: '#000', padding: '2px 6px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>Upload pendente</span>
+                                        );
+                                    })()}
+                                    {(() => {
                                         const reason = blockInvalidReason(bloco);
                                         if (!reason) return null;
                                         return (
