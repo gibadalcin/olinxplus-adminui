@@ -73,7 +73,8 @@ export function useBlocos(limite = 10) {
         type,
         created_at,
         // se houver meta com pendingFile, mantenha para upload posterior
-        pendingFile: meta && meta.pendingFile ? meta.pendingFile : undefined
+        pendingFile: meta && meta.pendingFile ? meta.pendingFile : undefined,
+        temp_id: meta && meta.temp_id ? meta.temp_id : undefined
       };
       }
     } else if (tipo === 'carousel') {
@@ -90,6 +91,7 @@ export function useBlocos(limite = 10) {
           meta: it.meta || undefined,
           nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split('/').pop()) || "",
           filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
+          temp_id: it.meta && it.meta.temp_id ? it.meta.temp_id : undefined
         })),
         created_at: new Date().toISOString(),
       };

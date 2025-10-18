@@ -162,6 +162,8 @@ export default function Content() {
             let token = null;
             if (user) token = await user.getIdToken();
             const updatedBlocos = [...blocos];
+            // Armazena metadados retornados pelos uploads para usar na substituição de blob: mais abaixo
+            const uploadedResults = [];
             // prepara contador de uploads (inclui pending files em blocos e em items de carousel)
             const totalPending = updatedBlocos.reduce((acc, b) => {
                 let c = acc;
@@ -187,6 +189,8 @@ export default function Content() {
                     try {
                         const formData = new FormData();
                         formData.append('file', b.pendingFile);
+                        // propaga temp_id quando disponível para casar resultado
+                        if (b.temp_id) formData.append('temp_id', b.temp_id);
                         formData.append('name', b.pendingFile.name || 'file');
                         formData.append('subtipo', b.subtipo || '');
                         formData.append('marca', marca || '');
@@ -211,6 +215,17 @@ export default function Content() {
                                 upload_error: null,
                             };
                             if (updatedBlocos[i].pendingFile) delete updatedBlocos[i].pendingFile;
+                            // Guarda metadados para casamentos posteriores (caso alguma referência blob: permaneça)
+                            uploadedResults.push({
+                                signed_url: result.signed_url || null,
+                                url: result.url || serverBloco.url || resolvedUrl,
+                                nome: resolvedNome,
+                                filename: resolvedFilename,
+                                type: resolvedType,
+                                created_at: serverBloco.created_at || result.created_at || new Date().toISOString(),
+                                originalName: (b && b.pendingFile && b.pendingFile.name) || null,
+                                temp_id: result && result.temp_id ? result.temp_id : (b && b.temp_id ? b.temp_id : null)
+                            });
                             setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
                             localDone += 1;
                             setBlocos([...updatedBlocos]);
@@ -249,6 +264,9 @@ export default function Content() {
                                 const fileObj = it.pendingFile || (it.meta && it.meta.pendingFile);
                                 const formData = new FormData();
                                 formData.append('file', fileObj);
+                                // propaga temp_id do item quando disponível
+                                const itemTempId = (it && it.temp_id) || (it && it.meta && it.meta.temp_id) || null;
+                                if (itemTempId) formData.append('temp_id', itemTempId);
                                 formData.append('name', fileObj.name || (it.meta && it.meta.nome) || 'item');
                                 formData.append('subtipo', it.subtipo || '');
                                 formData.append('marca', marca || '');
@@ -273,6 +291,17 @@ export default function Content() {
                                     if (newItems[j].pendingFile) delete newItems[j].pendingFile;
                                     if (newItems[j].meta && newItems[j].meta.pendingFile) delete newItems[j].meta.pendingFile;
                                     updatedBlocos[i].items = newItems;
+                                    // guarda metadados do item enviado
+                                    uploadedResults.push({
+                                        signed_url: result.signed_url || null,
+                                        url: result.url || serverBloco.url || resolvedItUrl,
+                                        nome: resolvedItNome,
+                                        filename: resolvedItFilename,
+                                        type: resolvedItType,
+                                        created_at: serverBloco.created_at || result.created_at || new Date().toISOString(),
+                                        originalName: (fileObj && fileObj.name) || null,
+                                        temp_id: result && result.temp_id ? result.temp_id : itemTempId
+                                    });
                                     setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
                                     localDone += 1;
                                     setBlocos([...updatedBlocos]);
@@ -320,78 +349,174 @@ export default function Content() {
             // grava blocos atualizados no estado antes de montar o payload
             setBlocos(updatedBlocos);
 
-            // monta o payload usando os blocos atualizados (updatedBlocos) quando disponíveis
+            // prepara sourceBlocos a partir dos blocos atualizados
             const sourceBlocos = (updatedBlocos && updatedBlocos.length) ? updatedBlocos : blocos;
-            const blocosLimpos = sourceBlocos.map(b => {
-                const url = (b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "";
-                // Garante nomes exatos esperados pelo backend
-                let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
-                let filename = (b && b.filename) ? b.filename : "";
-                if (!filename && url) {
-                    if (String(url).startsWith("gs://")) {
-                        const parts = String(url).split('/');
-                        filename = parts.slice(3).join('/');
-                        nome = parts[parts.length - 1] || nome;
-                    } else {
-                        try {
-                            const u = new URL(String(url));
-                            const parts = u.pathname.split('/').filter(Boolean);
-                            nome = parts[parts.length - 1] || nome;
-                            filename = parts.join('/');
-                        } catch (e) {
-                            // não é uma URL válida, deixa como estava
+            // Se ainda houver referências blob: (por algum motivo) tentar substituir usando uploadedResults
+            // heurística de match: 1) filename exato, 2) originalName do arquivo, 3) nome do bloco, 4) fallback na primeira ocorrência
+            const findMatchForBlock = (block, uploaded) => {
+                if (!block || !uploaded || uploaded.length === 0) return null;
+                const ulist = uploaded;
+                // tentar por temp_id primeiro
+                if (block.temp_id) {
+                    const mtemp = ulist.find(x => x.temp_id && x.temp_id === block.temp_id);
+                    if (mtemp) return mtemp;
+                }
+                // tentar por filename
+                if (block.filename) {
+                    const m = ulist.find(x => x.filename && x.filename === block.filename);
+                    if (m) return m;
+                }
+                // tentar por originalName (nome do arquivo enviado)
+                if (block.pendingFile && block.pendingFile.name) {
+                    const m = ulist.find(x => x.originalName && x.originalName === block.pendingFile.name);
+                    if (m) return m;
+                }
+                // tentar por nome do bloco
+                if (block.nome) {
+                    const m = ulist.find(x => x.nome && x.nome === block.nome);
+                    if (m) return m;
+                }
+                // fallback: primeiro com signed_url
+                return ulist.find(x => x.signed_url) || ulist[0] || null;
+            };
+
+            const findMatchForItem = (item, uploaded) => {
+                if (!item || !uploaded || uploaded.length === 0) return null;
+                const ulist = uploaded;
+                // temp_id first
+                if (item.temp_id) {
+                    const mtemp = ulist.find(x => x.temp_id && x.temp_id === item.temp_id);
+                    if (mtemp) return mtemp;
+                }
+                if (item.filename) {
+                    const m = ulist.find(x => x.filename && x.filename === item.filename);
+                    if (m) return m;
+                }
+                if (item.meta && item.meta.pendingFile && item.meta.pendingFile.name) {
+                    const m = ulist.find(x => x.originalName && x.originalName === item.meta.pendingFile.name);
+                    if (m) return m;
+                }
+                if (item.pendingFile && item.pendingFile.name) {
+                    const m = ulist.find(x => x.originalName && x.originalName === item.pendingFile.name);
+                    if (m) return m;
+                }
+                if (item.nome) {
+                    const m = ulist.find(x => x.nome && x.nome === item.nome);
+                    if (m) return m;
+                }
+                return ulist.find(x => x.signed_url) || ulist[0] || null;
+            };
+
+            if (typeof uploadedResults !== 'undefined' && Array.isArray(uploadedResults) && uploadedResults.length > 0) {
+                // DEBUG: inspecionar metadados retornados pelos uploads para diagnosticar correspondência
+                console.log('[handleSubmit] uploadedResults:', uploadedResults);
+                for (let i = 0; i < updatedBlocos.length; i++) {
+                    const b = updatedBlocos[i];
+                    if (!b) continue;
+                    if (b.url && String(b.url).startsWith('blob:')) {
+                        const match = findMatchForBlock(b, uploadedResults);
+                        if (match) {
+                            b.url = match.signed_url || match.url;
+                            b.nome = b.nome || match.nome;
+                            b.filename = b.filename || match.filename;
+                            b.type = b.type || match.type;
+                            b.created_at = b.created_at || match.created_at;
+                            if (b.pendingFile) delete b.pendingFile;
                         }
                     }
-                }
-
-                // map items (carousel) when present
-                let items = undefined;
-                if (Array.isArray(b?.items) && b.items.length > 0) {
-                    items = b.items.map(it => {
-                        const itUrl = (it && (it.url || it.conteudo)) ? (it.url || it.conteudo) : "";
-                        let itNome = (it && (it.nome || (it.meta && it.meta.nome))) ? (it.nome || (it.meta && it.meta.nome)) : "";
-                        let itFilename = (it && (it.filename || (it.meta && it.meta.filename))) ? (it.filename || (it.meta && it.meta.filename)) : "";
-                        if (!itFilename && itUrl) {
-                            if (String(itUrl).startsWith("gs://")) {
-                                const parts = String(itUrl).split('/');
-                                itFilename = parts.slice(3).join('/');
-                                itNome = parts[parts.length - 1] || itNome;
-                            } else {
-                                try {
-                                    const u = new URL(String(itUrl));
-                                    const parts = u.pathname.split('/').filter(Boolean);
-                                    itNome = parts[parts.length - 1] || itNome;
-                                    itFilename = parts.join('/');
-                                } catch (e) {
-                                    // ignore
+                    if (Array.isArray(b.items)) {
+                        for (let j = 0; j < b.items.length; j++) {
+                            const it = b.items[j];
+                            if (it && it.url && String(it.url).startsWith('blob:')) {
+                                const match = findMatchForItem(it, uploadedResults);
+                                if (match) {
+                                    it.url = match.signed_url || match.url;
+                                    it.nome = it.nome || match.nome;
+                                    it.filename = it.filename || match.filename;
+                                    it.type = it.type || match.type;
+                                    it.created_at = it.created_at || match.created_at;
+                                    if (it.pendingFile) delete it.pendingFile;
+                                    if (it.meta && it.meta.pendingFile) delete it.meta.pendingFile;
                                 }
                             }
                         }
-                        return {
-                            subtipo: it?.subtipo ?? (it?.meta && it.meta.subtipo) ?? "",
-                            url: itUrl,
-                            nome: itNome,
-                            filename: itFilename,
-                            type: it?.type ?? (it?.meta && it.meta.type) ?? "",
-                            created_at: it?.created_at ?? it?.createdAt ?? (it?.meta && it.meta.created_at) ?? new Date().toISOString(),
-                            conteudo: it?.conteudo ?? (it?.meta && it.meta.conteudo) ?? ""
-                        };
-                    });
+                    }
                 }
+                // atualiza blocosLimpos dados as substituições
+                // reconstruir blocosLimpos a partir de updatedBlocos
+                // (mantemos a variável sourceBlocos já apontando para updatedBlocos)
+                blocosLimpos = sourceBlocos.map(b => {
+                    const url = (b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "";
+                    // Garante nomes exatos esperados pelo backend
+                    let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
+                    let filename = (b && b.filename) ? b.filename : "";
+                    if (!filename && url) {
+                        if (String(url).startsWith("gs://")) {
+                            const parts = String(url).split('/');
+                            filename = parts.slice(3).join('/');
+                            nome = parts[parts.length - 1] || nome;
+                        } else {
+                            try {
+                                const u = new URL(String(url));
+                                const parts = u.pathname.split('/').filter(Boolean);
+                                nome = parts[parts.length - 1] || nome;
+                                filename = parts.join('/');
+                            } catch (e) {
+                                // não é uma URL válida, deixa como estava
+                            }
+                        }
+                    }
 
-                const blocoObj = {
-                    tipo: b?.tipo,
-                    subtipo: b?.subtipo ?? "",
-                    url,
-                    nome,
-                    filename,
-                    type: b?.type ?? b?.content_type ?? "",
-                    created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
-                    conteudo: b?.conteudo
-                };
-                if (items) blocoObj.items = items;
-                return blocoObj;
-            });
+                    // map items (carousel) quando presente
+                    let items = undefined;
+                    if (Array.isArray(b?.items) && b.items.length > 0) {
+                        items = b.items.map(it => {
+                            const itUrl = (it && (it.url || it.conteudo)) ? (it.url || it.conteudo) : "";
+                            let itNome = (it && (it.nome || (it.meta && it.meta.nome))) ? (it.nome || (it.meta && it.meta.nome)) : "";
+                            let itFilename = (it && (it.filename || (it.meta && it.meta.filename))) ? (it.filename || (it.meta && it.meta.filename)) : "";
+                            if (!itFilename && itUrl) {
+                                if (String(itUrl).startsWith("gs://")) {
+                                    const parts = String(itUrl).split('/');
+                                    itFilename = parts.slice(3).join('/');
+                                    itNome = parts[parts.length - 1] || itNome;
+                                } else {
+                                    try {
+                                        const u = new URL(String(itUrl));
+                                        const parts = u.pathname.split('/').filter(Boolean);
+                                        itNome = parts[parts.length - 1] || itNome;
+                                        itFilename = parts.join('/');
+                                    } catch (e) {
+                                        // ignore
+                                    }
+                                }
+                            }
+                            return {
+                                subtipo: it?.subtipo ?? (it?.meta && it.meta.subtipo) ?? "",
+                                url: itUrl,
+                                nome: itNome,
+                                filename: itFilename,
+                                type: it?.type ?? (it?.meta && it.meta.type) ?? "",
+                                created_at: it?.created_at ?? it?.createdAt ?? (it?.meta && it.meta.created_at) ?? new Date().toISOString(),
+                                conteudo: it?.conteudo ?? (it?.meta && it.meta.conteudo) ?? ""
+                            };
+                        });
+                    }
+
+                    const blocoObj = {
+                        tipo: b?.tipo,
+                        subtipo: b?.subtipo ?? "",
+                        url,
+                        nome,
+                        filename,
+                        type: b?.type ?? b?.content_type ?? "",
+                        created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
+                        conteudo: b?.conteudo
+                    };
+                    if (items) blocoObj.items = items;
+                    return blocoObj;
+                });
+            }
+
             // Validação: não enviar sem marca / região
             if (!marca || !tipoRegiao || !nomeRegiao) {
                 setSnackbarMsg('Por favor selecione Marca, Tipo de Região e Nome da Região antes de salvar.');
@@ -796,3 +921,5 @@ export default function Content() {
         </>
     );
 }
+
+// util: heurística de match (veja explicação acima)

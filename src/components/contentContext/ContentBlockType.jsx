@@ -27,6 +27,13 @@ export default function ContentBlockType({
     subtipo,
     setSubtipo
 }) {
+    // util: gera id temporário para mapear uploads pendentes
+    const genTempId = () => {
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        } catch (e) { }
+        return `tmp_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+    };
     const [showModal, setShowModal] = useState(false);
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -196,7 +203,8 @@ export default function ContentBlockType({
                     filename: file.name,
                     type: file.type,
                     created_at: new Date().toISOString(),
-                    url: objectUrl
+                    url: objectUrl,
+                    temp_id: genTempId(),
                 };
                 setUploadedMeta(meta);
                 // ao selecionar arquivo local, não mostrar o campo de código automaticamente
@@ -308,7 +316,8 @@ export default function ContentBlockType({
                     filename: file.name,
                     type: file.type,
                     created_at: new Date().toISOString(),
-                    url: objectUrl
+                    url: objectUrl,
+                    temp_id: genTempId(),
                 };
                 handleCarouselImgChange(idx, "meta", meta);
                 // mensagem UX removida: não usar alert() bloqueante aqui
