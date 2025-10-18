@@ -467,33 +467,49 @@ export default function ContentBlockType({
                             gap: isMobile ? 8 : 0
                         }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: bloco.tipoSelecionado === 'carousel' ? 'column-reverse' : 'row', width: isMobile ? '100%' : 'auto' }}>
-                            {bloco.tipoSelecionado === 'carousel' && Array.isArray(bloco.items) ? (
-                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                    {bloco.items.map((it, i) => (
-                                        <div key={i} style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            {it.url ? (
-                                                it.url.startsWith && it.url.startsWith('gs://') ? (
-                                                    <ContentImagePreview gsUrl={it.url} isVideo={it.subtipo === 'video'} />
-                                                ) : (
-                                                    it.subtipo === 'video' ? (
-                                                        <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            {(() => {
+                                const tipoAtual = bloco.tipoSelecionado || bloco.tipo;
+                                // Somente renderiza miniaturas para blocos de imagem ou carousel
+                                if (tipoAtual === 'carousel' && Array.isArray(bloco.items)) {
+                                    return (
+                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            {bloco.items.map((it, i) => (
+                                                <div key={i} style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    {it && it.url ? (
+                                                        (it.url.startsWith && it.url.startsWith('gs://')) ? (
+                                                            <ContentImagePreview gsUrl={it.url} isVideo={it.subtipo === 'video'} />
+                                                        ) : (
+                                                            it.subtipo === 'video' ? (
+                                                                <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                            ) : (
+                                                                <img src={it.url} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                            )
+                                                        )
                                                     ) : (
-                                                        <img src={it.url} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    )
-                                                )
-                                            ) : (
-                                                <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
-                                            )}
+                                                        <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                bloco.url && (bloco.url.startsWith('gs://') ? (
-                                    <ContentImagePreview gsUrl={bloco.url} />
-                                ) : (
-                                    <img src={bloco.url} alt="thumb" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
-                                ))
-                            )}
+                                    );
+                                }
+                                if (tipoAtual === 'imagem') {
+                                    if (bloco.url) {
+                                        return bloco.url.startsWith && bloco.url.startsWith('gs://') ? (
+                                            <ContentImagePreview gsUrl={bloco.url} />
+                                        ) : (
+                                            <img src={bloco.url} alt="thumb" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
+                                        );
+                                    }
+                                    return (
+                                        <div style={{ width: 64, height: 64, overflow: 'hidden', borderRadius: 6, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <div style={{ color: '#999', fontSize: 12 }}>Sem mídia</div>
+                                        </div>
+                                    );
+                                }
+                                // Para outros tipos (texto, título etc.) não renderiza miniatura
+                                return null;
+                            })()}
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <strong style={{ color: "#4cd964" }}>{bloco.tipo}</strong>

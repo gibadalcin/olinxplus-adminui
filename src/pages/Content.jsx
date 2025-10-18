@@ -405,17 +405,7 @@ export default function Content() {
                 return blocoObj;
             });
 
-            // Depuração: quando houver blocos com blob: bloquear, logar estados relevantes para diagnóstico
-            try {
-                console.group('[handleSubmit] Debug: estados antes da validação');
-                console.debug('uploadProgress:', uploadProgress);
-                console.debug('updatedBlocos (estado interno):', updatedBlocos);
-                console.debug('sourceBlocos (base para blocosLimpos):', sourceBlocos);
-                console.debug('blocosLimpos (payload candidato):', blocosLimpos);
-                console.groupEnd();
-            } catch (e) {
-                console.warn('[handleSubmit] Debug log falhou:', e);
-            }
+            // Removidos logs de debug excessivos para produção
 
             // Validação: não enviar sem marca / região
             if (!marca || !tipoRegiao || !nomeRegiao) {
@@ -456,10 +446,17 @@ export default function Content() {
                 console.warn('[handleSubmit] Bloqueado envio: blocos com URL blob: detectados', invalidBlocks);
                 return;
             }
-            console.log('[handleSubmit] Payload enviado:', payload);
+            // Garantir que o usuário esteja autenticado antes de enviar (backend espera token)
+            if (!token) {
+                setSnackbarMsg('Você precisa estar autenticado para salvar. Faça login e tente novamente.');
+                setSnackbarSeverity('warning');
+                setSnackbarOpen(true);
+                return;
+            }
+            const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify(payload),
             });
             const contentType = res.headers.get('content-type');
