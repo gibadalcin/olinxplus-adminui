@@ -102,6 +102,7 @@ export default function Content() {
         }
     }, [marcas, marca, setMarca]);
     const [blocosOriginais, setBlocosOriginais] = useState([]);
+    const [isExistingContent, setIsExistingContent] = useState(false);
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
     const [tipoRegiao, setTipoRegiao] = useState("");
@@ -118,7 +119,7 @@ export default function Content() {
     let botaoCor = "#4cd964"; // verde padrão
     let botaoTexto = "Salvar";
     if (
-        blocos.length === 0 && blocosOriginais.length > 0 && marca && latitude && longitude && tipoRegiao && nomeRegiao
+        blocos.length === 0 && isExistingContent && marca && tipoRegiao && nomeRegiao
     ) {
         botaoCor = "#ff3b30"; // vermelho para exclusão
         botaoTexto = "Excluir";
@@ -500,6 +501,8 @@ export default function Content() {
                 setBlocos([]);
                 setBlocosOriginais([]);
                 setTipoBloco("");
+                // marca que não existe mais conteúdo salvo para esta marca/região
+                setIsExistingContent(false);
             } else if (data.action === "saved") {
                 setSnackbarMsg("Conteúdo salvo com sucesso!");
                 setSnackbarSeverity("success");
@@ -507,6 +510,8 @@ export default function Content() {
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
                 setBlocos(savedBlocos);
                 setBlocosOriginais(savedBlocos);
+                // marca que há conteúdo salvo (agora existe um documento persistido)
+                setIsExistingContent(true);
                 // não limpar latitude/longitude/tipoRegiao/nomeRegiao para permanecer na mesma página
             } else {
                 setSnackbarMsg("Operação realizada!");
@@ -567,21 +572,26 @@ export default function Content() {
                     console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
                     setBlocos([]);
                     setBlocosOriginais([]);
+                    setIsExistingContent(false);
                     return;
                 }
                 const data = await res.json();
                 if (!data || !Array.isArray(data.blocos)) {
                     setBlocos([]);
                     setBlocosOriginais([]);
+                    setIsExistingContent(false);
                 } else {
                     setBlocos(data.blocos);
                     setBlocosOriginais(data.blocos);
+                    // marca que existe conteúdo previamente salvo para essa combinação de marca/região
+                    setIsExistingContent(Array.isArray(data.blocos) && data.blocos.length > 0);
                 }
             })
             .catch(err => {
                 console.error('Erro inesperado ao buscar blocos:', err, url);
                 setBlocos([]);
                 setBlocosOriginais([]);
+                setIsExistingContent(false);
             });
     }, [marca, latitude, longitude, tipoRegiao, nomeRegiao]);
 
