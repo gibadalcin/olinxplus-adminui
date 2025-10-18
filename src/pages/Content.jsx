@@ -335,7 +335,10 @@ export default function Content() {
             const sourceBlocos = (updatedBlocos && updatedBlocos.length) ? updatedBlocos : blocos;
             // Simples: reconstruir blocosLimpos diretamente a partir de updatedBlocos (sem heurísticas complexas)
             const blocosLimpos = sourceBlocos.map(b => {
-                const url = (b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "";
+                const tipoAtual = (b && (b.tipoSelecionado || b.tipo)) || '';
+                // Preencher `url` apenas para blocos de mídia (imagem, carousel, video).
+                const isMedia = ['imagem', 'carousel', 'video'].includes(String(tipoAtual).toLowerCase());
+                const url = isMedia ? ((b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "") : "";
                 // Garante nomes exatos esperados pelo backend
                 let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
                 let filename = (b && b.filename) ? b.filename : "";
@@ -391,17 +394,26 @@ export default function Content() {
                     });
                 }
 
-                const blocoObj = {
-                    tipo: b?.tipo,
-                    subtipo: b?.subtipo ?? "",
-                    url,
-                    nome,
-                    filename,
-                    type: b?.type ?? b?.content_type ?? "",
-                    created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
-                    conteudo: b?.conteudo
-                };
-                if (items) blocoObj.items = items;
+                let blocoObj;
+                if (isMedia) {
+                    blocoObj = {
+                        tipo: b?.tipo,
+                        subtipo: b?.subtipo ?? "",
+                        url,
+                        nome,
+                        filename,
+                        type: b?.type ?? b?.content_type ?? "",
+                        created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
+                        conteudo: b?.conteudo
+                    };
+                    if (items) blocoObj.items = items;
+                } else {
+                    // Para blocos de texto/não-mídia, enviar apenas o necessário
+                    blocoObj = {
+                        tipo: b?.tipo,
+                        conteudo: b?.conteudo ?? ""
+                    };
+                }
                 return blocoObj;
             });
 
