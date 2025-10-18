@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { getAuth } from "firebase/auth";
 import { uploadContentImage } from "../api";
+import { attachBlobFilesToBlocos } from "../utils/uploadHelper";
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
 import { useNavigate, useLocation } from "react-router-dom";
@@ -150,6 +151,13 @@ export default function Content() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        // Primeiro: transformar quaisquer URLs blob: em File/Blob e anexar como pendingFile
+        try {
+            await attachBlobFilesToBlocos(blocos);
+        } catch (err) {
+            console.warn('[handleSubmit] falha ao anexar blob files:', err);
+        }
+
         if (blocosIguais(blocos, blocosOriginais)) {
             setSnackbarMsg("Nenhuma alteração detectada nos blocos. Nada foi salvo.");
             setSnackbarSeverity("info");
