@@ -471,6 +471,18 @@ export default function ContentBlockType({
                         }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'start', flexDirection: bloco.tipoSelecionado === 'carousel' ? 'column-reverse' : 'row', width: isMobile ? '100%' : 'auto' }}>
                             {(() => {
+                                // Only render thumbnails for media blocks (imagem, carousel, video) or when the bloco has media-like properties
+                                const tipo = (bloco && (bloco.tipoSelecionado || bloco.tipo || '')).toLowerCase();
+                                const blocoUrlCandidate = (bloco && (bloco.url || bloco.conteudo)) || '';
+                                const hasUrlLike = blocoUrlCandidate && String(blocoUrlCandidate).trim() !== '' && (String(blocoUrlCandidate).startsWith('gs://') || String(blocoUrlCandidate).startsWith('/') || String(blocoUrlCandidate).startsWith('http') || String(blocoUrlCandidate).startsWith('blob:'));
+                                const hasTypeMedia = bloco && bloco.type && (String(bloco.type).startsWith('image') || String(bloco.type).startsWith('video'));
+                                const isMediaBlock = ['imagem', 'carousel', 'video'].includes(tipo)
+                                    || (Array.isArray(bloco.items) && bloco.items.length > 0)
+                                    || hasUrlLike
+                                    || bloco && bloco.pendingFile
+                                    || hasTypeMedia;
+                                if (!isMediaBlock) return null; // don't render any thumbnail area for pure text blocks
+
                                 // Detect by content instead of relying on the human-readable `tipo` text
                                 const isCarousel = Array.isArray(bloco.items) && bloco.items.length > 0;
                                 const hasUrl = bloco.url && String(bloco.url).trim() !== '';

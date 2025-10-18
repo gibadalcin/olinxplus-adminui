@@ -547,12 +547,16 @@ export default function Content() {
             });
             const dryJson = await dryRes.json();
             if (dryRes.ok && dryJson && dryJson.action === 'dry_run') {
-                // show modal to confirm deletions
-                setPendingDeleteList(dryJson.to_delete || []);
-                setShowDeletePreview(true);
-                // store payload and token to be used on confirm
-                setPendingSave({ payload, token });
-                return;
+                const toDelete = Array.isArray(dryJson.to_delete) ? dryJson.to_delete : (dryJson.to_delete ? [dryJson.to_delete] : []);
+                if (toDelete.length > 0) {
+                    // show modal to confirm deletions only when there are files to remove
+                    setPendingDeleteList(toDelete);
+                    setShowDeletePreview(true);
+                    // store payload and token to be used on confirm
+                    setPendingSave({ payload, token });
+                    return;
+                }
+                // if nothing to delete, continue to perform real save below
             }
 
             // fallback: if dry-run not supported or returned unexpected, proceed with a real save
@@ -893,11 +897,9 @@ export default function Content() {
                             !longitude ||
                             !tipoRegiao ||
                             !nomeRegiao ||
-                            (
-                                (blocos.length === 0 && blocosOriginais.length === 0) ||
-                                (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
-                                anyInvalidBlock
-                            )
+                            (blocos.length === 0 && blocosOriginais.length === 0) ||
+                            (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
+                            ((blocos.length >= blocosOriginais.length) && anyInvalidBlock)
                         }
                         color={botaoCor}
                         label={botaoTexto}
