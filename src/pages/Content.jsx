@@ -238,8 +238,9 @@ export default function Content() {
                 setSnackbarMsg("Conteúdo salvo com sucesso!");
                 setSnackbarSeverity("success");
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : payload.blocos;
-                setBlocos(savedBlocos);
-                setBlocosOriginais(savedBlocos);
+                const normalizedSavedBlocos = normalizeBlocosFromServer(savedBlocos);
+                setBlocos(normalizedSavedBlocos);
+                setBlocosOriginais(normalizedSavedBlocos);
                 setIsExistingContent(true);
             } else {
                 setSnackbarMsg("Operação realizada!");
@@ -533,9 +534,51 @@ export default function Content() {
 
                 if (isMedia) {
                     const blocoObj = { tipo: b?.tipo, subtipo: b?.subtipo ?? '', url, nome, filename, type: b?.type ?? b?.content_type ?? '', created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(), conteudo: b?.conteudo };
-                    if (items) blocoObj.items = items;
+                    // include action if present on meta or top-level
+                    try {
+                        const meta = b.meta || {};
+                        const action = meta.action || b.action;
+                        if (action) blocoObj.action = action;
+                    } catch (e) { }
+                    if (items) {
+                        // items already mapped above; include item-level action if present
+                        blocoObj.items = items.map((it, idx) => {
+                            try {
+                                const original = (b.items && b.items[idx]) || {};
+                                const itMeta = original.meta || {};
+                                const action = (itMeta && itMeta.action) || original.action;
+                                if (action) return { ...it, action };
+                            } catch (e) { }
+                            return it;
+                        });
+                    }
                     return blocoObj;
                 }
+                // if this bloco is a button, serialize into expected backend shape
+                const tipoLower = ((b && (b.tipoSelecionado || b.tipo)) || '').toString().toLowerCase();
+                if (tipoLower && tipoLower.startsWith('botao')) {
+                    const meta = b.meta || {};
+                    // canonicalize tipo: prefer explicit values, otherwise infer
+                    let tipoCanonical = 'botao_default';
+                    if (tipoLower === 'botao_destaque' || tipoLower.includes('destaque')) tipoCanonical = 'botao_destaque';
+                    // ensure action shape exists
+                    const action = meta.action || (meta.href ? { type: 'link', href: meta.href, target: meta.target || '_self' } : undefined);
+                    return {
+                        tipo: tipoCanonical,
+                        label: meta.label || '',
+                        action: action,
+                        variant: meta.variant || undefined,
+                        color: meta.color || undefined,
+                        icon: meta.icon || undefined,
+                        size: meta.size || undefined,
+                        disabled: typeof meta.disabled !== 'undefined' ? meta.disabled : undefined,
+                        position: meta.position || undefined,
+                        analytics: meta.analytics || undefined,
+                        temp_id: meta.temp_id || undefined,
+                        created_at: b?.created_at || meta.created_at || undefined,
+                    };
+                }
+
                 return { tipo: b?.tipo, conteudo: b?.conteudo ?? '' };
             });
 
@@ -547,6 +590,33 @@ export default function Content() {
             }
 
             const payload = { nome_marca: marca, blocos: blocosLimpos, latitude: parseFloat(latitude), longitude: parseFloat(longitude), tipo_regiao: tipoRegiao, nome_regiao: nomeRegiao };
+
+            // client-side validation to avoid avoidable 422 from backend for malformed button blocks
+            function validateBlocosForSave(list) {
+                if (!Array.isArray(list)) return { ok: true };
+                for (let i = 0; i < list.length; i++) {
+                    const b = list[i];
+                    if (!b) continue;
+                    const tipo = (b.tipo || '').toString().toLowerCase();
+                    if (tipo && tipo.startsWith('botao')) {
+                        const label = b.label || '';
+                        const action = b.action || null;
+                        if (!label || String(label).trim() === '') return { ok: false, message: `Bloco de botão no índice ${i} está sem label.` };
+                        if (!action) return { ok: false, message: `Bloco de botão '${label || i}' está sem ação.` };
+                        if (action.type === 'link' && !(action.href && String(action.href).trim() !== '')) return { ok: false, message: `Bloco de botão '${label}' tem ação link inválida.` };
+                        if (action.type === 'callback' && !(action.name && String(action.name).trim() !== '')) return { ok: false, message: `Bloco de botão '${label}' tem ação callback inválida.` };
+                    }
+                }
+                return { ok: true };
+            }
+
+            const precheck = validateBlocosForSave(blocosLimpos);
+            if (!precheck.ok) {
+                setSnackbarMsg(precheck.message || 'Bloco inválido detectado.');
+                setSnackbarSeverity('error');
+                setSnackbarOpen(true);
+                return;
+            }
 
             // dry-run
             const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -585,7 +655,8 @@ export default function Content() {
                 setSnackbarMsg('Conteúdo salvo com sucesso!');
                 setSnackbarSeverity('success');
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
-                setBlocos(savedBlocos); setBlocosOriginais(savedBlocos); setIsExistingContent(true);
+                const normalizedSavedBlocos = normalizeBlocosFromServer(savedBlocos);
+                setBlocos(normalizedSavedBlocos); setBlocosOriginais(normalizedSavedBlocos); setIsExistingContent(true);
             } else {
                 setSnackbarMsg('Operação realizada!'); setSnackbarSeverity('success');
             }
@@ -670,6 +741,64 @@ export default function Content() {
             });
     }, [marca, latitude, longitude, tipoRegiao, nomeRegiao]);
 
+    // Normalize blocks returned by the server so button blocks always have meta populated
+    function normalizeBlocosFromServer(list) {
+        if (!Array.isArray(list)) return list;
+        return list.map(b => {
+            try {
+                if (!b || typeof b !== 'object') return b;
+                const rawTipo = ((b.tipoSelecionado || b.tipo) || '').toString().toLowerCase();
+                // infer a simple tipoSelecionado when missing (so modals render correct inputs)
+                let inferred = b.tipoSelecionado;
+                if (!inferred) {
+                    if (rawTipo.includes('botao') || rawTipo.startsWith('botao')) {
+                        inferred = rawTipo.includes('destaque') ? 'botao_destaque' : 'botao_default';
+                    } else if (rawTipo.includes('imagem') || rawTipo.startsWith('imagem')) {
+                        inferred = 'imagem';
+                    } else if (rawTipo.includes('carousel') || rawTipo.startsWith('carousel')) {
+                        inferred = 'carousel';
+                    } else if (rawTipo.includes('video') || rawTipo.startsWith('video')) {
+                        inferred = 'video';
+                    }
+                }
+                if (rawTipo && rawTipo.startsWith('botao')) {
+                    const meta = b.meta && typeof b.meta === 'object' ? { ...(b.meta || {}) } : {};
+                    // copy top-level fields into meta if missing
+                    if (!meta.label && b.label) meta.label = b.label;
+                    if (!meta.action && b.action) meta.action = b.action;
+                    if (!meta.variant && b.variant) meta.variant = b.variant;
+                    if (!meta.color && b.color) meta.color = b.color;
+                    if (!meta.icon && b.icon) meta.icon = b.icon;
+                    if (!meta.size && b.size) meta.size = b.size;
+                    if (typeof meta.disabled === 'undefined' && typeof b.disabled !== 'undefined') meta.disabled = b.disabled;
+                    if (!meta.position && b.position) meta.position = b.position;
+                    if (!meta.analytics && b.analytics) meta.analytics = b.analytics;
+                    return { ...b, meta, tipoSelecionado: inferred };
+                }
+                // also handle image and carousel: copy top-level action into meta.action for editing convenience
+                try {
+                    const tipoLow = ((b.tipoSelecionado || b.tipo) || '').toString().toLowerCase();
+                    if (tipoLow && tipoLow.startsWith('imagem')) {
+                        const meta = b.meta && typeof b.meta === 'object' ? { ...(b.meta || {}) } : {};
+                        if (!meta.action && b.action) meta.action = b.action;
+                        return { ...b, meta, tipoSelecionado: inferred || 'imagem' };
+                    }
+                    if (tipoLow && tipoLow.startsWith('carousel') && Array.isArray(b.items)) {
+                        const items = b.items.map(it => {
+                            try {
+                                const itMeta = it.meta && typeof it.meta === 'object' ? { ...(it.meta || {}) } : {};
+                                if (!itMeta.action && it.action) itMeta.action = it.action;
+                                return { ...it, meta: itMeta };
+                            } catch (e) { return it; }
+                        });
+                        return { ...b, items, tipoSelecionado: inferred || 'carousel' };
+                    }
+                } catch (e) { /* ignore */ }
+            } catch (e) { /* ignore */ }
+            return b;
+        });
+    }
+
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -683,6 +812,21 @@ export default function Content() {
         if (!b) return true;
         if (!b.tipo && !b.tipoSelecionado) return true;
         const tipoRaw = (b.tipoSelecionado || b.tipo || '').toString().toLowerCase();
+        // Button blocks: validate meta-driven button (label + action)
+        if (tipoRaw.startsWith('botao')) {
+            try {
+                const m = b.meta || {};
+                // Accept both shapes: meta-based (internal) or top-level (from backend)
+                const label = (m && m.label) || b.label || '';
+                if (!label || String(label).trim() === '') return true;
+                const a = (m && m.action) || b.action;
+                if (!a) return true;
+                if (a.type === 'link') return !(a.href && String(a.href).trim() !== '');
+                if (a.type === 'callback') return !(a.name && String(a.name).trim() !== '');
+                // unknown action type -> consider incomplete
+                return true;
+            } catch (e) { return true; }
+        }
         // Imagem: aceita se houver url (gs://, / ou blob:) ou conteudo (caso o backend use conteudo)
         if (tipoRaw === 'imagem' || tipoRaw.startsWith('imagem')) {
             return !((b.url && String(b.url).trim() !== '') || (b.conteudo && String(b.conteudo).trim() !== '') || (b.pendingFile));

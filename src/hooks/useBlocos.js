@@ -13,6 +13,10 @@ export function useBlocos(limite = 10) {
   function getNextLabel(type) {
     const count = blocos.filter((b) => b.tipoSelecionado === type).length + 1;
     switch (type) {
+      case 'botao_default':
+        return `Botão ${count}`;
+      case 'botao_destaque':
+        return `Botão (destaque) ${count}`;
       case "subtitulo":
         return `Subtítulo ${count}`;
       case "carousel":
@@ -38,6 +42,10 @@ export function useBlocos(limite = 10) {
     } else if (tipo === "carousel") {
       const items = meta && meta.items;
       if (!items || !Array.isArray(items) || !items.some((it) => (it && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== ""))))) return;
+    } else if (tipo === 'botao_default' || tipo === 'botao_destaque' || String(tipo).startsWith('botao')) {
+      // button blocks are meta-driven (label + action). accept meta and don't require conteudo
+      const hasMeta = meta && (meta.label || (meta.action && (meta.action.href || meta.action.name)));
+      if (!hasMeta) return;
     } else {
       if (!conteudo || !String(conteudo).trim()) return;
     }
@@ -105,7 +113,18 @@ export function useBlocos(limite = 10) {
         created_at: new Date().toISOString(),
       };
     } else {
-      novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
+      // handle button blocks: construct meta-driven bloco
+      if (tipo === 'botao_default' || tipo === 'botao_destaque' || String(tipo).startsWith('botao')) {
+        novoBloco = {
+          tipo: label,
+          conteudo: null,
+          tipoSelecionado: tipo,
+          meta: meta && Object.keys(meta).length ? { ...(meta || {}) } : undefined,
+          created_at: new Date().toISOString(),
+        };
+      } else {
+        novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
+      }
     }
 
     setBlocos((prev) => [...prev, novoBloco]);
@@ -185,6 +204,16 @@ export function useBlocos(limite = 10) {
             filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split("/").slice(3).join("/")) || "",
           })),
         };
+      } else if (tipo === 'botao_default' || tipo === 'botao_destaque' || String(tipo).startsWith('botao')) {
+        // update button block meta
+        const updated = {
+          ...bloco,
+          tipo: bloco.tipo || getNextLabel(tipo),
+          tipoSelecionado: tipo,
+          conteudo: null,
+        };
+        if (meta && Object.keys(meta).length) updated.meta = { ...(updated.meta || {}), ...(meta || {}) };
+        novos[idx] = updated;
       } else {
         novos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };
       }
