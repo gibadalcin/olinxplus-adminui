@@ -420,7 +420,7 @@ export default function ContentBlockType({
                                     (img.url.startsWith && img.url.startsWith('gs://')) ? (
                                         <ContentImagePreview gsUrl={img.url} signedUrl={img.signed_url || (img.meta && img.meta.signed_url)} isVideo={img.subtipo === 'video'} />
                                     ) : (
-                                        <img src={img.url} alt="preview" style={{ maxWidth: isMobile ? 160 : 60, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} />
+                                        <img src={img.url} alt="preview" style={{ width: '120px', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
                                     )
                                 )
                             )}
@@ -938,6 +938,6 @@ function ContentImagePreview({ gsUrl, isVideo, signedUrl: signedUrlProp }) {
         return () => { isMounted = false; };
     }, [gsUrl, signedUrlProp]);
     if (!signedUrl) return <span>Carregando mídia...</span>;
-    if (isVideo) return <video src={signedUrl} controls style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
-    return <img src={signedUrl} alt="preview" style={{ maxWidth: "100%", maxHeight: 120, marginBottom: 8, borderRadius: 8 }} />;
+    if (isVideo) return <video src={signedUrl} controls style={{ width: '120px', height: '100%', objectFit: 'cover', borderRadius: 8 }} />;
+    return <img src={signedUrl} alt="preview" style={{ width: '120px', height: '100%', objectFit: 'cover', borderRadius: 8 }} />;
 }

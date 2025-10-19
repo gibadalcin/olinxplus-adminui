@@ -68,10 +68,45 @@ export default function Content() {
     const dragRef = useRef(null);
     // Função para comparar blocos
     function blocosIguais(a, b) {
+        // comparação mais robusta que detecta mudanças em campos relevantes de mídia e items do carousel
+        if (!Array.isArray(a) || !Array.isArray(b)) return false;
         if (a.length !== b.length) return false;
-        return a.every((bloco, i) =>
-            bloco.tipo === b[i]?.tipo && bloco.conteudo === b[i]?.conteudo
-        );
+        const normalizeBloco = (bloco) => {
+            if (!bloco || typeof bloco !== 'object') return {};
+            return {
+                tipo: bloco.tipo || bloco.tipoSelecionado || '',
+                conteudo: bloco.conteudo || '',
+                url: bloco.url || bloco.conteudo || '',
+                nome: bloco.nome || bloco.name || (bloco.filename || ''),
+                filename: bloco.filename || '',
+                items: Array.isArray(bloco.items) ? bloco.items.map(it => ({
+                    subtipo: it?.subtipo || '',
+                    url: (it && (it.url || it.conteudo)) || '',
+                    nome: (it && (it.nome || (it.meta && it.meta.nome))) || '',
+                    filename: (it && (it.filename || (it.meta && it.meta.filename))) || ''
+                })) : []
+            };
+        };
+
+        for (let i = 0; i < a.length; i++) {
+            const A = normalizeBloco(a[i]);
+            const B = normalizeBloco(b[i]);
+            if (A.tipo !== B.tipo) return false;
+            if ((A.conteudo || '') !== (B.conteudo || '')) return false;
+            if ((A.url || '') !== (B.url || '')) return false;
+            if ((A.nome || '') !== (B.nome || '')) return false;
+            if ((A.filename || '') !== (B.filename || '')) return false;
+            if ((A.items || []).length !== (B.items || []).length) return false;
+            for (let j = 0; j < (A.items || []).length; j++) {
+                const ai = A.items[j] || {};
+                const bi = B.items[j] || {};
+                if ((ai.subtipo || '') !== (bi.subtipo || '')) return false;
+                if ((ai.url || '') !== (bi.url || '')) return false;
+                if ((ai.nome || '') !== (bi.nome || '')) return false;
+                if ((ai.filename || '') !== (bi.filename || '')) return false;
+            }
+        }
+        return true;
     }
     // util: detecta se um objeto se parece com File/Blob
     function isFileLike(x) {
