@@ -938,12 +938,7 @@ export default function ContentBlockType({
                                             </div>
                                         </div>
                                     )}
-                                    <div style={{ fontSize: 13 }}>
-                                        {bloco.tipoSelecionado === 'imagem'
-                                            ? ''
-                                            : bloco.conteudo
-                                        }
-                                    </div>
+
                                 </div>
                             </div>
                         </div>

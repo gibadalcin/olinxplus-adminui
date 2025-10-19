@@ -563,6 +563,11 @@ export default function Content() {
                     if (tipoLower === 'botao_destaque' || tipoLower.includes('destaque')) tipoCanonical = 'botao_destaque';
                     // ensure action shape exists
                     const action = meta.action || (meta.href ? { type: 'link', href: meta.href, target: meta.target || '_self' } : undefined);
+                    // only include analytics if an event_name is provided (avoid sending empty objects)
+                    const analytics = (meta && meta.analytics && meta.analytics.event_name && String(meta.analytics.event_name).trim())
+                        ? { event_name: String(meta.analytics.event_name).trim(), params: meta.analytics.params || undefined }
+                        : undefined;
+
                     return {
                         tipo: tipoCanonical,
                         label: meta.label || '',
@@ -573,7 +578,7 @@ export default function Content() {
                         size: meta.size || undefined,
                         disabled: typeof meta.disabled !== 'undefined' ? meta.disabled : undefined,
                         position: meta.position || undefined,
-                        analytics: meta.analytics || undefined,
+                        analytics: analytics,
                         temp_id: meta.temp_id || undefined,
                         created_at: b?.created_at || meta.created_at || undefined,
                     };
