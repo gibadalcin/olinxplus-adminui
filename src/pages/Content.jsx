@@ -696,13 +696,16 @@ export default function Content() {
     };
 
     function handleChangeMarca(novaMarca) {
-        // Modal deve aparecer se houver blocos em edição, mesmo se tipoRegiao ou nomeRegiao estiverem preenchidos
-        if (blocos.length > 0) {
-            setNextMarca(novaMarca);
-            setShowModal(true);
-        } else {
-            setMarca(novaMarca);
-        }
+        // Mostrar modal apenas se houver alterações não salvas entre blocos e blocosOriginais
+        try {
+            const hasUnsaved = !(Array.isArray(blocos) && Array.isArray(blocosOriginais) && blocosIguais(blocos, blocosOriginais));
+            if (hasUnsaved) {
+                setNextMarca(novaMarca);
+                setShowModal(true);
+                return;
+            }
+        } catch (e) { /* se algo der errado, cair back para comportamento seguro */ }
+        setMarca(novaMarca);
     }
 
     function handleConfirmTrocaMarca() {
