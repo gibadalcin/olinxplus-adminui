@@ -120,6 +120,11 @@ export function useBlocos(limite = 10) {
           conteudo: null,
           tipoSelecionado: tipo,
           meta: meta && Object.keys(meta).length ? { ...(meta || {}) } : undefined,
+          // also populate top-level fields for compatibility with server-side shapes and validation
+          ...(meta && meta.label ? { label: meta.label } : {}),
+          ...(meta && meta.action ? { action: meta.action } : {}),
+          // mirror analytics object from meta even if it doesn't include event_name
+          ...(meta && meta.analytics ? { analytics: { ...(meta.analytics || {}) } } : {}),
           created_at: new Date().toISOString(),
         };
       } else {
@@ -212,7 +217,21 @@ export function useBlocos(limite = 10) {
           tipoSelecionado: tipo,
           conteudo: null,
         };
+        // if meta provided and has keys, merge; if provided but empty, ensure meta becomes undefined
         if (meta && Object.keys(meta).length) updated.meta = { ...(updated.meta || {}), ...(meta || {}) };
+        else if (meta && Object.keys(meta || {}).length === 0) updated.meta = undefined;
+
+        // mirror important meta fields to top-level for compatibility
+        // use explicit key checks so clearing a field in the modal removes the top-level copy
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'label')) {
+          if (meta.label) updated.label = meta.label; else delete updated.label;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'action')) {
+          if (meta.action) updated.action = meta.action; else delete updated.action;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'analytics')) {
+          if (meta.analytics) updated.analytics = meta.analytics; else delete updated.analytics;
+        }
         novos[idx] = updated;
       } else {
         novos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };

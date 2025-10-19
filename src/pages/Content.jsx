@@ -79,6 +79,10 @@ export default function Content() {
                 url: bloco.url || bloco.conteudo || '',
                 nome: bloco.nome || bloco.name || (bloco.filename || ''),
                 filename: bloco.filename || '',
+                // include button-specific metadata for equality checks
+                label: (bloco.meta && bloco.meta.label) || bloco.label || '',
+                action: (bloco.meta && bloco.meta.action) || bloco.action || null,
+                analytics: (bloco.meta && bloco.meta.analytics) || bloco.analytics || null,
                 items: Array.isArray(bloco.items) ? bloco.items.map(it => ({
                     subtipo: it?.subtipo || '',
                     url: (it && (it.url || it.conteudo)) || '',
@@ -96,6 +100,16 @@ export default function Content() {
             if ((A.url || '') !== (B.url || '')) return false;
             if ((A.nome || '') !== (B.nome || '')) return false;
             if ((A.filename || '') !== (B.filename || '')) return false;
+            // if button metadata differs, consider not equal
+            if ((A.label || '') !== (B.label || '')) return false;
+            const aAction = A.action || {};
+            const bAction = B.action || {};
+            if ((aAction.type || '') !== (bAction.type || '')) return false;
+            if ((aAction.href || '') !== (bAction.href || '')) return false;
+            if ((aAction.name || '') !== (bAction.name || '')) return false;
+            const aAnalytics = (A.analytics && A.analytics.event_name) || '';
+            const bAnalytics = (B.analytics && B.analytics.event_name) || '';
+            if (aAnalytics !== bAnalytics) return false;
             if ((A.items || []).length !== (B.items || []).length) return false;
             for (let j = 0; j < (A.items || []).length; j++) {
                 const ai = A.items[j] || {};
@@ -563,15 +577,15 @@ export default function Content() {
                     if (tipoLower === 'botao_destaque' || tipoLower.includes('destaque')) tipoCanonical = 'botao_destaque';
                     // ensure action shape exists
                     const action = meta.action || (meta.href ? { type: 'link', href: meta.href, target: meta.target || '_self' } : undefined);
-                    // only include analytics if an event_name is provided (avoid sending empty objects)
-                    const analytics = (meta && meta.analytics && meta.analytics.event_name && String(meta.analytics.event_name).trim())
-                        ? { event_name: String(meta.analytics.event_name).trim(), params: meta.analytics.params || undefined }
-                        : undefined;
+                    // include analytics object as-is if provided by meta (do not require event_name)
+                    const analytics = (meta && meta.analytics) ? meta.analytics : undefined;
 
                     return {
                         tipo: tipoCanonical,
-                        label: meta.label || '',
-                        action: action,
+                        // prefer meta.label when editing, but fall back to top-level label if present
+                        label: (meta && typeof meta.label !== 'undefined' && meta.label !== '' ? meta.label : (b.label || '')),
+                        // prefer meta.action, then top-level b.action, then legacy meta.href
+                        action: action || b.action || (b.action === undefined ? undefined : b.action),
                         variant: meta.variant || undefined,
                         color: meta.color || undefined,
                         icon: meta.icon || undefined,
@@ -604,8 +618,15 @@ export default function Content() {
                     if (!b) continue;
                     const tipo = (b.tipo || '').toString().toLowerCase();
                     if (tipo && tipo.startsWith('botao')) {
-                        const label = b.label || '';
-                        const action = b.action || null;
+                        const label = (b.label || (b.meta && b.meta.label) || '').toString();
+                        // tolerate several shapes: top-level action, meta.action, or legacy meta.href/meta.name
+                        let action = (b.action || (b.meta && b.meta.action) || null);
+                        if (!action && b.meta && b.meta.href) {
+                            action = { type: 'link', href: b.meta.href, target: b.meta.target || '_self' };
+                        }
+                        if (!action && b.meta && b.meta.name) {
+                            action = { type: 'callback', name: b.meta.name };
+                        }
                         if (!label || String(label).trim() === '') return { ok: false, message: `Bloco de botão no índice ${i} está sem label.` };
                         if (!action) return { ok: false, message: `Bloco de botão '${label || i}' está sem ação.` };
                         if (action.type === 'link' && !(action.href && String(action.href).trim() !== '')) return { ok: false, message: `Bloco de botão '${label}' tem ação link inválida.` };
@@ -824,7 +845,10 @@ export default function Content() {
                 // Accept both shapes: meta-based (internal) or top-level (from backend)
                 const label = (m && m.label) || b.label || '';
                 if (!label || String(label).trim() === '') return true;
-                const a = (m && m.action) || b.action;
+                // tolerate several shapes for action
+                let a = (m && m.action) || b.action || null;
+                if (!a && m && m.href) a = { type: 'link', href: m.href, target: m.target || '_self' };
+                if (!a && m && m.name) a = { type: 'callback', name: m.name };
                 if (!a) return true;
                 if (a.type === 'link') return !(a.href && String(a.href).trim() !== '');
                 if (a.type === 'callback') return !(a.name && String(a.name).trim() !== '');
@@ -965,6 +989,13 @@ export default function Content() {
                                     nomeRegiao={nomeRegiao}
                                     subtipo={subtipo}
                                     setSubtipo={setSubtipo}
+                                    onBlockSaved={(msg, severity = 'success') => {
+                                        try {
+                                            setSnackbarMsg(msg || 'Bloco salvo');
+                                            setSnackbarSeverity(severity || 'success');
+                                            setSnackbarOpen(true);
+                                        } catch (e) { console.error('onBlockSaved handler error', e); }
+                                    }}
                                 />
                                 <Copyright />
                             </form>

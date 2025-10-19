@@ -31,7 +31,9 @@ export default function ContentBlockType({
     tipoRegiao,
     nomeRegiao,
     subtipo,
-    setSubtipo
+    setSubtipo,
+    // optional callback to notify parent when a bloco is added/edited
+    onBlockSaved
 }) {
     // util: gera id temporário para mapear uploads pendentes
     const genTempId = () => {
@@ -1199,9 +1201,10 @@ export default function ContentBlockType({
                                                             size: buttonSize,
                                                             position: buttonPosition,
                                                             disabled: buttonDisabled,
-                                                            analytics: buttonAnalytics ? { event_name: buttonAnalytics } : undefined,
+                                                            analytics: (buttonAnalytics && String(buttonAnalytics).trim() !== '') ? { event_name: String(buttonAnalytics).trim() } : undefined,
                                                         };
                                                         onAddBloco(tipoSelecionado, null, null, meta);
+                                                        try { if (typeof onBlockSaved === 'function') onBlockSaved('Bloco adicionado', 'success'); } catch (e) { }
                                                     } else if (tipoSelecionado === "imagem") {
                                                         // attach action into meta if present
                                                         const metaWithAction = uploadedMeta && Object.keys(uploadedMeta).length ? { ...(uploadedMeta || {}) } : {};
@@ -1262,9 +1265,10 @@ export default function ContentBlockType({
                                                             size: buttonSize,
                                                             position: buttonPosition,
                                                             disabled: buttonDisabled,
-                                                            analytics: buttonAnalytics ? { event_name: buttonAnalytics } : undefined,
+                                                            analytics: (buttonAnalytics && String(buttonAnalytics).trim() !== '') ? { event_name: String(buttonAnalytics).trim() } : undefined,
                                                         };
                                                         onEditBloco(editIdx, tipoSelecionado, null, null, meta);
+                                                        try { if (typeof onBlockSaved === 'function') onBlockSaved('Bloco editado', 'success'); } catch (e) { }
                                                     } else if (tipoSelecionado === "imagem") {
                                                         const metaWithAction = uploadedMeta && Object.keys(uploadedMeta).length ? { ...(uploadedMeta || {}) } : {};
                                                         if (imageActionHref && String(imageActionHref).trim() !== '') {
