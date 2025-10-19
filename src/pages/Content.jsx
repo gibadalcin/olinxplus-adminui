@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { getAuth } from "firebase/auth";
 import { uploadContentImage } from "../api";
 import { attachBlobFilesToBlocos } from "../utils/uploadHelper";
+import { revokeAllObjectUrls } from "../utils/fileUtils";
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
 import { useNavigate, useLocation } from "react-router-dom";
@@ -71,6 +72,12 @@ export default function Content() {
         return a.every((bloco, i) =>
             bloco.tipo === b[i]?.tipo && bloco.conteudo === b[i]?.conteudo
         );
+    }
+    // util: detecta se um objeto se parece com File/Blob
+    function isFileLike(x) {
+        try {
+            return x && typeof x === 'object' && (typeof x.name === 'string' || typeof x.size === 'number');
+        } catch (e) { return false; }
     }
     const location = useLocation();
     const params = new URLSearchParams(location.search);
@@ -186,6 +193,8 @@ export default function Content() {
                 setLongitude("");
                 setNomeRegiao("");
                 setTipoRegiao("");
+                // revoke any object URLs before clearing state
+                try { revokeAllObjectUrls(blocos); } catch (e) { }
                 setBlocos([]);
                 setBlocosOriginais([]);
                 setTipoBloco("");
@@ -216,7 +225,7 @@ export default function Content() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        // Primeiro: transformar quaisquer URLs blob: em File/Blob e anexar como pendingFile
+        // Converter blobs para File quando aplicável
         try {
             await attachBlobFilesToBlocos(blocos);
         } catch (err) {
@@ -224,191 +233,127 @@ export default function Content() {
         }
 
         if (blocosIguais(blocos, blocosOriginais)) {
-            setSnackbarMsg("Nenhuma alteração detectada nos blocos. Nada foi salvo.");
-            setSnackbarSeverity("info");
+            setSnackbarMsg('Nenhuma alteração detectada nos blocos. Nada foi salvo.');
+            setSnackbarSeverity('info');
             setSnackbarOpen(true);
             return;
         }
+
         try {
-            // Primeiro: enviar ao backend todos os arquivos pendentes (pendingFile) que foram carregados localmente
             const user = getAuth().currentUser;
             let token = null;
             if (user) token = await user.getIdToken();
-            const updatedBlocos = [...blocos];
-            // (simplified) não usamos matching complexo por temp_id; atualizamos os blocos diretamente
-            // prepara contador de uploads (inclui pending files em blocos e em items de carousel)
-            const isFileLike = (x) => {
-                try {
-                    return x && typeof x === 'object' && (typeof x.name === 'string' || typeof x.size === 'number');
-                } catch (e) { return false; }
-            };
-            const totalPending = updatedBlocos.reduce((acc, b) => {
-                let c = acc;
-                if (b && isFileLike(b.pendingFile)) c += 1;
-                if (b && Array.isArray(b.items)) {
-                    c += b.items.reduce((ai, it) => ai + ((it && (isFileLike(it.pendingFile) || (it.meta && isFileLike(it.meta.pendingFile)))) ? 1 : 0), 0);
-                }
-                return c;
-            }, 0);
-            setUploadProgress({ done: 0, total: totalPending, errors: [] });
-            // Contadores locais para evitar ler estado assíncrono logo em seguida
-            let localDone = 0;
-            let localErrors = [];
 
-            // Simples: enviar cada arquivo pendente por ocorrência (bloco e items)
+            // usar clone raso para preservar referências a objetos File (JSON.stringify|parse remove Files)
+            const updatedBlocos = (blocos || []).slice();
+            const localIsFileLike = isFileLike;
+
+            // Upload de arquivos pendentes (bloco-level e items)
             for (let i = 0; i < updatedBlocos.length; i++) {
                 const b = updatedBlocos[i];
                 if (!b) continue;
-                // upload de pendingFile do próprio bloco (single image)
-                // only upload single-image pendingFile when it's a File/Blob, not a boolean flag used by carousel blocks
-                if (b && isFileLike(b.pendingFile)) {
-                    updatedBlocos[i] = { ...b, upload_status: 'uploading', upload_error: null };
-                    setBlocos([...updatedBlocos]);
+
+                // bloco-level
+                const blockFile = (b && (b.pendingFile || (b.meta && b.meta.pendingFile))) || null;
+                if (localIsFileLike(blockFile)) {
                     try {
-                        const formData = new FormData();
-                        formData.append('file', b.pendingFile);
-                        // include deterministic temp_id if present to map upload response
-                        if (b.temp_id) formData.append('temp_id', b.temp_id);
-                        else if (b.meta && b.meta.temp_id) formData.append('temp_id', b.meta.temp_id);
-                        formData.append('name', b.pendingFile.name || 'file');
-                        formData.append('subtipo', b.subtipo || '');
-                        formData.append('marca', marca || '');
-                        formData.append('tipo_regiao', tipoRegiao || '');
-                        formData.append('nome_regiao', nomeRegiao || '');
-                        // tentativa com retry simples (até 2 tentativas) para reduzir falhas transitórias (422 etc.)
-                        let result = null;
-                        let attempts = 0;
-                        while (attempts < 2) {
-                            attempts += 1;
-                            result = await uploadContentImage(formData, token);
-                            if (result && result.success) break;
-                            console.warn(`[handleSubmit] tentativa ${attempts} falhou para upload de bloco (index ${i})`, result);
-                        }
-                        if (result && result.success) {
-                            const serverBloco = result.bloco || {};
-                            // preferir URL permanente (serverBloco.url ou result.url) para persistência;
-                            // usar signed_url apenas como fallback para preview
-                            const resolvedUrl = serverBloco.url || result.url || result.signed_url || b.url || '';
-                            const resolvedNome = serverBloco.nome || result.nome || b.nome || serverBloco.name || '';
-                            const resolvedFilename = serverBloco.filename || result.filename || b.filename || '';
-                            const resolvedType = serverBloco.type || result.type || b.type || '';
+                        updatedBlocos[i] = { ...b, upload_status: 'uploading', upload_error: null };
+                        setBlocos([...updatedBlocos]);
+                        const fd = new FormData();
+                        fd.append('file', blockFile);
+                        if (b.temp_id) fd.append('temp_id', b.temp_id);
+                        else if (b.meta && b.meta.temp_id) fd.append('temp_id', b.meta.temp_id);
+                        fd.append('name', (blockFile && (blockFile.name || blockFile.filename)) || (b.nome || 'file'));
+                        fd.append('subtipo', b.subtipo || '');
+                        fd.append('marca', marca || '');
+                        fd.append('tipo_regiao', tipoRegiao || '');
+                        fd.append('nome_regiao', nomeRegiao || '');
+                        const uploaded = await uploadContentImage(fd, token);
+                        if (uploaded && uploaded.success) {
+                            const serverBloco = uploaded.bloco || uploaded;
                             updatedBlocos[i] = {
-                                ...b,
-                                url: resolvedUrl,
-                                nome: resolvedNome,
-                                filename: resolvedFilename,
-                                type: resolvedType,
-                                created_at: serverBloco.created_at || result.created_at || b.created_at || new Date().toISOString(),
+                                ...updatedBlocos[i],
+                                url: serverBloco.url || uploaded.url || updatedBlocos[i].url || '',
+                                nome: serverBloco.nome || uploaded.nome || updatedBlocos[i].nome || '',
+                                filename: serverBloco.filename || uploaded.filename || updatedBlocos[i].filename || '',
+                                type: serverBloco.type || uploaded.type || updatedBlocos[i].type || '',
+                                created_at: serverBloco.created_at || uploaded.created_at || updatedBlocos[i].created_at || new Date().toISOString(),
                                 upload_status: 'done',
                                 upload_error: null,
                             };
-                            if (updatedBlocos[i].pendingFile) delete updatedBlocos[i].pendingFile;
-                            // metadados já aplicados diretamente ao bloco acima
-                            setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
-                            localDone += 1;
+                            // limpar pendingFile references e quaisquer meta.url/meta.conteudo que possam conter blob:
+                            try {
+                                if (updatedBlocos[i].meta) {
+                                    if (localIsFileLike(updatedBlocos[i].meta.pendingFile)) delete updatedBlocos[i].meta.pendingFile;
+                                    if (updatedBlocos[i].meta.url && String(updatedBlocos[i].meta.url).startsWith('blob:')) delete updatedBlocos[i].meta.url;
+                                    if (updatedBlocos[i].meta.conteudo && typeof updatedBlocos[i].meta.conteudo === 'string' && updatedBlocos[i].meta.conteudo.startsWith && updatedBlocos[i].meta.conteudo.startsWith('blob:')) delete updatedBlocos[i].meta.conteudo;
+                                }
+                                if (localIsFileLike(updatedBlocos[i].pendingFile)) delete updatedBlocos[i].pendingFile;
+                            } catch (e) { /* ignore */ }
                             setBlocos([...updatedBlocos]);
                         } else {
-                            console.warn('[handleSubmit] Falha ao enviar arquivo pendente para o servidor após retries', result);
-                            updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: result && (result.error || JSON.stringify(result)) ? (result.error || JSON.stringify(result)) : 'unknown' };
-                            setBlocos([...updatedBlocos]);
-                            const errObj = { index: i, reason: result && result.error ? result.error : JSON.stringify(result) };
-                            setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, errObj] }));
-                            localErrors.push(errObj);
-                            // show server-provided message when possible
-                            const serverMsg = result && result.error ? (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)) : 'Falha ao enviar arquivo';
-                            setSnackbarMsg(`Falha ao enviar arquivo: ${serverMsg}`);
-                            setSnackbarSeverity('error');
-                            setSnackbarOpen(true);
-                            return;
+                            throw new Error((uploaded && uploaded.error) ? JSON.stringify(uploaded.error) : 'upload failed');
                         }
                     } catch (err) {
-                        console.error('[handleSubmit] Erro ao enviar arquivo pendente:', err);
-                        updatedBlocos[i] = { ...b, upload_status: 'error', upload_error: String(err) };
+                        console.error('[handleSubmit] Erro ao enviar arquivo pendente (bloco):', err);
+                        updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: String(err) };
                         setBlocos([...updatedBlocos]);
-                        setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, reason: String(err) }] }));
                         setSnackbarMsg('Erro ao enviar arquivos de imagem. Veja console.');
                         setSnackbarSeverity('error');
                         setSnackbarOpen(true);
                         return;
                     }
                 }
-                // upload de pending files dentro de carousel items
-                if (b && Array.isArray(b.items)) {
+
+                // items do carousel
+                if (Array.isArray(b.items)) {
                     for (let j = 0; j < b.items.length; j++) {
                         const it = b.items[j];
-                        const pending = (it && (it.pendingFile || (it.meta && it.meta.pendingFile)));
-                        if (pending) {
-                            updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'uploading', upload_error: null };
-                            setBlocos([...updatedBlocos]);
+                        if (!it) continue;
+                        const itemFile = (it.pendingFile || (it.meta && it.meta.pendingFile)) || null;
+                        if (localIsFileLike(itemFile)) {
                             try {
-                                const fileObj = it.pendingFile || (it.meta && it.meta.pendingFile);
-                                const formData = new FormData();
-                                formData.append('file', fileObj);
-                                // include deterministic temp_id for carousel item if present
-                                if (it.temp_id) formData.append('temp_id', it.temp_id);
-                                else if (it.meta && it.meta.temp_id) formData.append('temp_id', it.meta.temp_id);
-                                formData.append('name', fileObj.name || (it.meta && it.meta.nome) || 'item');
-                                formData.append('subtipo', it.subtipo || '');
-                                formData.append('marca', marca || '');
-                                formData.append('tipo_regiao', tipoRegiao || '');
-                                formData.append('nome_regiao', nomeRegiao || '');
-                                // retry simples para uploads de item do carousel
-                                let result = null;
-                                let attempts = 0;
-                                while (attempts < 2) {
-                                    attempts += 1;
-                                    result = await uploadContentImage(formData, token);
-                                    if (result && result.success) break;
-                                    console.warn(`[handleSubmit] tentativa ${attempts} falhou para upload de item carousel (index ${i} item ${j})`, result);
-                                }
-                                if (result && result.success) {
-                                    const serverBloco = result.bloco || {};
+                                updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'uploading', upload_error: null };
+                                setBlocos([...updatedBlocos]);
+                                const fd = new FormData();
+                                fd.append('file', itemFile);
+                                if (it.temp_id) fd.append('temp_id', it.temp_id);
+                                else if (it.meta && it.meta.temp_id) fd.append('temp_id', it.meta.temp_id);
+                                fd.append('name', (itemFile && (itemFile.name || itemFile.filename)) || (it.nome || 'item'));
+                                fd.append('subtipo', it.subtipo || '');
+                                fd.append('marca', marca || '');
+                                fd.append('tipo_regiao', tipoRegiao || '');
+                                fd.append('nome_regiao', nomeRegiao || '');
+                                const uploaded = await uploadContentImage(fd, token);
+                                if (uploaded && uploaded.success) {
+                                    const serverBloco = uploaded.bloco || uploaded;
                                     const newItems = (updatedBlocos[i].items || []).slice();
-                                    // preferir URL permanente do servidor antes do signed_url
-                                    const resolvedItUrl = serverBloco.url || result.url || result.signed_url || newItems[j].url || '';
-                                    const resolvedItNome = serverBloco.nome || result.nome || newItems[j].nome || serverBloco.name || '';
-                                    const resolvedItFilename = serverBloco.filename || result.filename || newItems[j].filename || '';
-                                    const resolvedItType = serverBloco.type || result.type || newItems[j].type || '';
                                     newItems[j] = {
-                                        ...(newItems[j] || {}),
-                                        url: resolvedItUrl,
-                                        nome: resolvedItNome,
-                                        filename: resolvedItFilename,
-                                        type: resolvedItType,
-                                        created_at: serverBloco.created_at || result.created_at || newItems[j].created_at || new Date().toISOString(),
+                                        ...newItems[j],
+                                        url: serverBloco.url || uploaded.url || newItems[j].url || '',
+                                        nome: serverBloco.nome || uploaded.nome || newItems[j].nome || '',
+                                        filename: serverBloco.filename || uploaded.filename || newItems[j].filename || '',
+                                        type: serverBloco.type || uploaded.type || newItems[j].type || '',
+                                        created_at: serverBloco.created_at || uploaded.created_at || newItems[j].created_at || new Date().toISOString(),
                                     };
-                                    if (newItems[j].pendingFile) delete newItems[j].pendingFile;
-                                    if (newItems[j].meta && newItems[j].meta.pendingFile) delete newItems[j].meta.pendingFile;
-                                    updatedBlocos[i].items = newItems;
-                                    // se não houver mais itens com pendingFile/ meta.pendingFile, remover pendingFile no bloco pai
+                                    // limpar pendingFile e quaisquer meta.url/meta.conteudo que possam conter blob:
                                     try {
-                                        const anyPendingLeft = Array.isArray(newItems) && newItems.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
-                                        if (!anyPendingLeft && updatedBlocos[i].pendingFile) {
-                                            delete updatedBlocos[i].pendingFile;
+                                        if (newItems[j].meta) {
+                                            if (localIsFileLike(newItems[j].meta.pendingFile)) delete newItems[j].meta.pendingFile;
+                                            if (newItems[j].meta.url && String(newItems[j].meta.url).startsWith('blob:')) delete newItems[j].meta.url;
+                                            if (newItems[j].meta.conteudo && typeof newItems[j].meta.conteudo === 'string' && newItems[j].meta.conteudo.startsWith && newItems[j].meta.conteudo.startsWith('blob:')) delete newItems[j].meta.conteudo;
                                         }
-                                    } catch (e) { }
-                                    // metadados já aplicados diretamente ao item acima
-                                    setUploadProgress(prev => ({ ...prev, done: prev.done + 1 }));
-                                    localDone += 1;
+                                        if (localIsFileLike(newItems[j].pendingFile)) delete newItems[j].pendingFile;
+                                    } catch (e) { /* ignore */ }
+                                    updatedBlocos[i].items = newItems;
                                     setBlocos([...updatedBlocos]);
                                 } else {
-                                    console.warn('[handleSubmit] Falha ao enviar item pendente do carousel após retries', result);
-                                    updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: result && (result.error || JSON.stringify(result)) ? (result.error || JSON.stringify(result)) : 'unknown' };
-                                    setBlocos([...updatedBlocos]);
-                                    setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, { index: i, item: j, reason: result && result.error ? result.error : JSON.stringify(result) }] }));
-                                    const serverMsg = result && result.error ? (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)) : 'Falha ao enviar item do carousel';
-                                    setSnackbarMsg(`Falha ao enviar item do carousel: ${serverMsg}`);
-                                    setSnackbarSeverity('error');
-                                    setSnackbarOpen(true);
-                                    return;
+                                    throw new Error((uploaded && uploaded.error) ? JSON.stringify(uploaded.error) : 'upload failed');
                                 }
                             } catch (err) {
                                 console.error('[handleSubmit] Erro ao enviar item pendente do carousel:', err);
                                 updatedBlocos[i] = { ...updatedBlocos[i], upload_status: 'error', upload_error: String(err) };
                                 setBlocos([...updatedBlocos]);
-                                const errObj = { index: i, item: j, reason: String(err) };
-                                setUploadProgress(prev => ({ ...prev, errors: [...prev.errors, errObj] }));
-                                localErrors.push(errObj);
                                 setSnackbarMsg('Erro ao enviar arquivos do carousel. Veja console.');
                                 setSnackbarSeverity('error');
                                 setSnackbarOpen(true);
@@ -418,52 +363,74 @@ export default function Content() {
                     }
                 }
             }
-            // após uploads pendentes concluídos
-            if (totalPending > 0) {
-                const done = localDone;
-                const total = totalPending;
-                const errors = localErrors || [];
-                if (errors.length === 0) {
-                    setSnackbarMsg(`Uploads concluídos: ${done}/${total}`);
-                    setSnackbarSeverity('success');
-                    setSnackbarOpen(true);
-                } else {
-                    setSnackbarMsg(`Uploads concluídos: ${done}/${total}. Erros em ${errors.length} arquivos.`);
-                    setSnackbarSeverity('warning');
-                    setSnackbarOpen(true);
-                }
-            }
-            // grava blocos atualizados no estado antes de montar o payload
-            // sanitiza flags de pendingFile a nível de bloco para evitar badges persistentes
+
+            // Após uploads, limpar flags pendentes locais
             try {
-                for (let k = 0; k < updatedBlocos.length; k++) {
-                    const blk = updatedBlocos[k];
-                    if (!blk) continue;
+                updatedBlocos.forEach(blk => {
+                    if (!blk) return;
                     if (Array.isArray(blk.items) && blk.items.length > 0) {
-                        const anyPending = blk.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
-                        if (!anyPending && blk.pendingFile) delete blk.pendingFile;
+                        const anyPending = blk.items.some(it => (it && (localIsFileLike(it.pendingFile) || (it.meta && localIsFileLike(it.meta.pendingFile)))));
+                        if (!anyPending && blk.meta && localIsFileLike(blk.meta.pendingFile)) delete blk.meta.pendingFile;
                     }
-                }
-            } catch (e) { }
+                });
+            } catch (e) { /* ignore */ }
+
             setBlocos(updatedBlocos);
 
-            // prepara sourceBlocos a partir dos blocos atualizados
+            // Montar payload e enviar dry-run + save (reaproveitar lógica existente)
+            // Limpeza final: remover qualquer campo que contenha blob: para evitar rejeição pelo backend
+            function cleanBlobFieldsFromBlocos(list) {
+                if (!Array.isArray(list)) return list;
+                for (let bi = 0; bi < list.length; bi++) {
+                    const b = list[bi];
+                    if (!b || typeof b !== 'object') continue;
+                    try {
+                        // campos no bloco
+                        if (b.url && typeof b.url === 'string' && b.url.startsWith && b.url.startsWith('blob:')) delete b.url;
+                        if (b.conteudo && typeof b.conteudo === 'string' && b.conteudo.startsWith && b.conteudo.startsWith('blob:')) delete b.conteudo;
+                        if (b.meta) {
+                            if (b.meta.url && typeof b.meta.url === 'string' && b.meta.url.startsWith && b.meta.url.startsWith('blob:')) delete b.meta.url;
+                            if (b.meta.conteudo && typeof b.meta.conteudo === 'string' && b.meta.conteudo.startsWith && b.meta.conteudo.startsWith('blob:')) delete b.meta.conteudo;
+                            // also remove common preview/temp fields if present
+                            if (b.meta.previewUrl && typeof b.meta.previewUrl === 'string' && b.meta.previewUrl.startsWith && b.meta.previewUrl.startsWith('blob:')) delete b.meta.previewUrl;
+                            if (b.meta.tmpUrl && typeof b.meta.tmpUrl === 'string' && b.meta.tmpUrl.startsWith && b.meta.tmpUrl.startsWith('blob:')) delete b.meta.tmpUrl;
+                        }
+                        // campos temporários comuns no próprio bloco
+                        if (b.previewUrl && typeof b.previewUrl === 'string' && b.previewUrl.startsWith && b.previewUrl.startsWith('blob:')) delete b.previewUrl;
+                        if (b.tmpUrl && typeof b.tmpUrl === 'string' && b.tmpUrl.startsWith && b.tmpUrl.startsWith('blob:')) delete b.tmpUrl;
+                        // items
+                        if (Array.isArray(b.items)) {
+                            for (let ii = 0; ii < b.items.length; ii++) {
+                                const it = b.items[ii];
+                                if (!it || typeof it !== 'object') continue;
+                                if (it.url && typeof it.url === 'string' && it.url.startsWith && it.url.startsWith('blob:')) delete it.url;
+                                if (it.conteudo && typeof it.conteudo === 'string' && it.conteudo.startsWith && it.conteudo.startsWith('blob:')) delete it.conteudo;
+                                if (it.meta) {
+                                    if (it.meta.url && typeof it.meta.url === 'string' && it.meta.url.startsWith && it.meta.url.startsWith('blob:')) delete it.meta.url;
+                                    if (it.meta.conteudo && typeof it.meta.conteudo === 'string' && it.meta.conteudo.startsWith && it.meta.conteudo.startsWith('blob:')) delete it.meta.conteudo;
+                                    if (it.meta.previewUrl && typeof it.meta.previewUrl === 'string' && it.meta.previewUrl.startsWith && it.meta.previewUrl.startsWith('blob:')) delete it.meta.previewUrl;
+                                    if (it.meta.tmpUrl && typeof it.meta.tmpUrl === 'string' && it.meta.tmpUrl.startsWith && it.meta.tmpUrl.startsWith('blob:')) delete it.meta.tmpUrl;
+                                }
+                                if (it.previewUrl && typeof it.previewUrl === 'string' && it.previewUrl.startsWith && it.previewUrl.startsWith('blob:')) delete it.previewUrl;
+                                if (it.tmpUrl && typeof it.tmpUrl === 'string' && it.tmpUrl.startsWith && it.tmpUrl.startsWith('blob:')) delete it.tmpUrl;
+                            }
+                        }
+                    } catch (e) {
+                        // ignore per-block errors
+                        continue;
+                    }
+                }
+                return list;
+            }
+
+            try { cleanBlobFieldsFromBlocos(updatedBlocos); } catch (e) { /* ignore */ }
             const sourceBlocos = (updatedBlocos && updatedBlocos.length) ? updatedBlocos : blocos;
-            // Simples: reconstruir blocosLimpos diretamente a partir de updatedBlocos (sem heurísticas complexas)
             const blocosLimpos = sourceBlocos.map(b => {
                 const tipoAtual = (b && (b.tipoSelecionado || b.tipo)) || '';
-                // Heurística robusta para detectar blocos de mídia:
-                // - tipoSelecionado explícito (imagem/carousel/video)
-                // - label `tipo` que começa com 'imagem'/'video'/'carousel'
-                // - presença de url/conteudo (gs://, /, http, blob:)
-                // - presença de filename/nome/type
-                // - items array (carousel)
                 let isMedia = false;
                 try {
                     const tipoSel = (b && b.tipoSelecionado) || '';
-                    if (typeof tipoSel === 'string' && ['imagem', 'carousel', 'video'].includes(tipoSel.toLowerCase())) {
-                        isMedia = true;
-                    }
+                    if (typeof tipoSel === 'string' && ['imagem', 'carousel', 'video'].includes(tipoSel.toLowerCase())) isMedia = true;
                     const tipoLabel = (b && b.tipo) || '';
                     if (!isMedia && typeof tipoLabel === 'string') {
                         const tl = tipoLabel.toLowerCase();
@@ -478,13 +445,12 @@ export default function Content() {
                     }
                     if (!isMedia && (b && (b.filename || b.nome || b.type))) isMedia = true;
                     if (!isMedia && Array.isArray(b?.items) && b.items.length > 0) isMedia = true;
-                } catch (e) { /* fallback: not media */ }
-                const url = isMedia ? ((b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : "") : "";
-                // Garante nomes exatos esperados pelo backend
-                let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : "";
-                let filename = (b && b.filename) ? b.filename : "";
+                } catch (e) { }
+                const url = isMedia ? ((b && (b.url || b.conteudo)) ? (b.url || b.conteudo) : '') : '';
+                let nome = (b && (b.nome || b.name)) ? (b.nome || b.name) : '';
+                let filename = (b && b.filename) ? b.filename : '';
                 if (!filename && url) {
-                    if (String(url).startsWith("gs://")) {
+                    if (String(url).startsWith('gs://')) {
                         const parts = String(url).split('/');
                         filename = parts.slice(3).join('/');
                         nome = parts[parts.length - 1] || nome;
@@ -494,21 +460,18 @@ export default function Content() {
                             const parts = u.pathname.split('/').filter(Boolean);
                             nome = parts[parts.length - 1] || nome;
                             filename = parts.join('/');
-                        } catch (e) {
-                            // não é uma URL válida, deixa como estava
-                        }
+                        } catch (e) { }
                     }
                 }
 
-                // map items (carousel) quando presente
                 let items = undefined;
                 if (Array.isArray(b?.items) && b.items.length > 0) {
                     items = b.items.map(it => {
-                        const itUrl = (it && (it.url || it.conteudo)) ? (it.url || it.conteudo) : "";
-                        let itNome = (it && (it.nome || (it.meta && it.meta.nome))) ? (it.nome || (it.meta && it.meta.nome)) : "";
-                        let itFilename = (it && (it.filename || (it.meta && it.meta.filename))) ? (it.filename || (it.meta && it.meta.filename)) : "";
+                        const itUrl = (it && (it.url || it.conteudo)) ? (it.url || it.conteudo) : '';
+                        let itNome = (it && (it.nome || (it.meta && it.meta.nome))) ? (it.nome || (it.meta && it.meta.nome)) : '';
+                        let itFilename = (it && (it.filename || (it.meta && it.meta.filename))) ? (it.filename || (it.meta && it.meta.filename)) : '';
                         if (!itFilename && itUrl) {
-                            if (String(itUrl).startsWith("gs://")) {
+                            if (String(itUrl).startsWith('gs://')) {
                                 const parts = String(itUrl).split('/');
                                 itFilename = parts.slice(3).join('/');
                                 itNome = parts[parts.length - 1] || itNome;
@@ -518,163 +481,84 @@ export default function Content() {
                                     const parts = u.pathname.split('/').filter(Boolean);
                                     itNome = parts[parts.length - 1] || itNome;
                                     itFilename = parts.join('/');
-                                } catch (e) {
-                                    // ignore
-                                }
+                                } catch (e) { }
                             }
                         }
                         return {
-                            subtipo: it?.subtipo ?? (it?.meta && it.meta.subtipo) ?? "",
+                            subtipo: it?.subtipo ?? (it?.meta && it.meta.subtipo) ?? '',
                             url: itUrl,
                             nome: itNome,
                             filename: itFilename,
-                            type: it?.type ?? (it?.meta && it.meta.type) ?? "",
+                            type: it?.type ?? (it?.meta && it.meta.type) ?? '',
                             created_at: it?.created_at ?? it?.createdAt ?? (it?.meta && it.meta.created_at) ?? new Date().toISOString(),
-                            conteudo: it?.conteudo ?? (it?.meta && it.meta.conteudo) ?? ""
+                            conteudo: it?.conteudo ?? (it?.meta && it.meta.conteudo) ?? ''
                         };
                     });
                 }
 
-                let blocoObj;
                 if (isMedia) {
-                    blocoObj = {
-                        tipo: b?.tipo,
-                        subtipo: b?.subtipo ?? "",
-                        url,
-                        nome,
-                        filename,
-                        type: b?.type ?? b?.content_type ?? "",
-                        created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(),
-                        conteudo: b?.conteudo
-                    };
+                    const blocoObj = { tipo: b?.tipo, subtipo: b?.subtipo ?? '', url, nome, filename, type: b?.type ?? b?.content_type ?? '', created_at: b?.created_at ?? b?.createdAt ?? new Date().toISOString(), conteudo: b?.conteudo };
                     if (items) blocoObj.items = items;
-                } else {
-                    // Para blocos de texto/não-mídia, enviar apenas o necessário
-                    blocoObj = {
-                        tipo: b?.tipo,
-                        conteudo: b?.conteudo ?? ""
-                    };
+                    return blocoObj;
                 }
-                return blocoObj;
+                return { tipo: b?.tipo, conteudo: b?.conteudo ?? '' };
             });
 
-            // Removidos logs de debug excessivos para produção
-
-            // Validação: não enviar sem marca / região
             if (!marca || !tipoRegiao || !nomeRegiao) {
                 setSnackbarMsg('Por favor selecione Marca, Tipo de Região e Nome da Região antes de salvar.');
                 setSnackbarSeverity('warning');
                 setSnackbarOpen(true);
-                console.warn('[handleSubmit] Campos obrigatórios ausentes:', { marca, tipoRegiao, nomeRegiao });
                 return;
             }
 
-            const payload = {
-                nome_marca: marca,
-                blocos: blocosLimpos,
-                latitude: parseFloat(latitude),
-                longitude: parseFloat(longitude),
-                tipo_regiao: tipoRegiao,
-                nome_regiao: nomeRegiao,
-            };
-            // DEBUG: inspecionar blocos antes da validação final de blob:
-            // inspeção: dados prontos para validação (debug removido em produção)
-            // Validação extra: não permitir envio de URLs locais (blob:)
-            const invalidBlocks = (payload.blocos || []).map((b, idx) => {
-                const u = (b.url || "") + "";
-                const c = (b.conteudo || "") + "";
-                if ((u.startsWith && u.startsWith('blob:')) || (c.startsWith && c.startsWith('blob:'))) {
-                    return { index: idx, filename: b.filename || b.nome || '(sem nome)' };
-                }
-                return null;
-            }).filter(Boolean);
-            if (invalidBlocks.length > 0) {
-                const preview = invalidBlocks.slice(0, 3).map(x => `#${x.index + 1} (${x.filename})`).join(', ');
-                const msg = invalidBlocks.length <= 3
-                    ? `Uploads pendentes nos blocos: ${preview}. Aguarde os uploads ou remova os blocos.`
-                    : `Uploads pendentes em ${invalidBlocks.length} blocos (ex: ${preview}). Aguarde os uploads ou remova os blocos.`;
-                setSnackbarMsg(msg);
-                setSnackbarSeverity('warning');
-                setSnackbarOpen(true);
-                console.warn('[handleSubmit] Bloqueado envio: blocos com URL blob: detectados', invalidBlocks);
-                return;
-            }
-            // Garantir que o usuário esteja autenticado antes de enviar (backend espera token)
-            if (!token) {
-                setSnackbarMsg('Você precisa estar autenticado para salvar. Faça login e tente novamente.');
-                setSnackbarSeverity('warning');
-                setSnackbarOpen(true);
-                return;
-            }
-            const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
-            // FIRST: dry-run to compute files that would be deleted
-            const dryRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo?dry_run=true`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(payload),
-            });
-            const dryJson = await dryRes.json();
+            const payload = { nome_marca: marca, blocos: blocosLimpos, latitude: parseFloat(latitude), longitude: parseFloat(longitude), tipo_regiao: tipoRegiao, nome_regiao: nomeRegiao };
+
+            // dry-run
+            const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+            const dryRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo?dry_run=true`, { method: 'POST', headers, body: JSON.stringify(payload) });
+            let dryJson = {};
+            try { dryJson = await dryRes.json(); } catch (e) { dryJson = {}; }
             if (dryRes.ok && dryJson && dryJson.action === 'dry_run') {
                 const toDelete = Array.isArray(dryJson.to_delete) ? dryJson.to_delete : (dryJson.to_delete ? [dryJson.to_delete] : []);
                 if (toDelete.length > 0) {
-                    // show modal to confirm deletions only when there are files to remove
                     setPendingDeleteList(toDelete);
                     setShowDeletePreview(true);
-                    // store payload and token to be used on confirm
                     setPendingSave({ payload, token });
                     return;
                 }
-                // if nothing to delete, continue to perform real save below
             }
 
-            // fallback: if dry-run not supported or returned unexpected, proceed with a real save
-            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(payload),
-            });
+            // real save
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, { method: 'POST', headers, body: JSON.stringify(payload) });
             const contentType = res.headers.get('content-type');
             if (!res.ok || !contentType || !contentType.includes('application/json')) {
                 const errorText = await res.text();
                 console.error('Erro ao cadastrar conteúdo:', { status: res.status, contentType, errorText, payload });
                 setSnackbarMsg('Erro ao cadastrar conteúdo!');
-                setSnackbarSeverity("error");
+                setSnackbarSeverity('error');
                 setSnackbarOpen(true);
                 return;
             }
             const data = await res.json();
-            if (data.action === "deleted") {
-                setSnackbarMsg("Conteúdo excluído com sucesso!");
-                setSnackbarSeverity("error"); // vermelho para exclusão
-                // limpa campos após exclusão
-                setLatitude("");
-                setLongitude("");
-                setNomeRegiao("");
-                setTipoRegiao("");
-                setBlocos([]);
-                setBlocosOriginais([]);
-                setTipoBloco("");
-                // marca que não existe mais conteúdo salvo para esta marca/região
-                setIsExistingContent(false);
-            } else if (data.action === "saved") {
-                setSnackbarMsg("Conteúdo salvo com sucesso!");
-                setSnackbarSeverity("success");
-                // manter os blocos salvos visíveis e marcar como originais
+            if (data.action === 'deleted') {
+                setSnackbarMsg('Conteúdo excluído com sucesso!');
+                setSnackbarSeverity('error');
+                setLatitude(''); setLongitude(''); setNomeRegiao(''); setTipoRegiao('');
+                try { revokeAllObjectUrls(blocos); } catch (e) { }
+                setBlocos([]); setBlocosOriginais([]); setTipoBloco(''); setIsExistingContent(false);
+            } else if (data.action === 'saved') {
+                setSnackbarMsg('Conteúdo salvo com sucesso!');
+                setSnackbarSeverity('success');
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
-                setBlocos(savedBlocos);
-                setBlocosOriginais(savedBlocos);
-                // marca que há conteúdo salvo (agora existe um documento persistido)
-                setIsExistingContent(true);
-                // não limpar latitude/longitude/tipoRegiao/nomeRegiao para permanecer na mesma página
+                setBlocos(savedBlocos); setBlocosOriginais(savedBlocos); setIsExistingContent(true);
             } else {
-                setSnackbarMsg("Operação realizada!");
-                setSnackbarSeverity("success");
+                setSnackbarMsg('Operação realizada!'); setSnackbarSeverity('success');
             }
             setSnackbarOpen(true);
         } catch (err) {
             console.error('Erro inesperado ao cadastrar conteúdo:', err);
             setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
-            setSnackbarSeverity("error");
+            setSnackbarSeverity('error');
             setSnackbarOpen(true);
         }
     };
@@ -705,6 +589,7 @@ export default function Content() {
     const lastUrlRef = useRef("");
     useEffect(() => {
         if (!(marca && tipoRegiao && nomeRegiao)) {
+            try { revokeAllObjectUrls(blocos); } catch (e) { }
             setBlocos([]);
             setBlocosOriginais([]);
             lastUrlRef.current = "";
@@ -723,6 +608,7 @@ export default function Content() {
                 if (!res.ok || !contentType || !contentType.includes('application/json')) {
                     const errorText = await res.text();
                     console.error('Erro ao buscar blocos:', { status: res.status, contentType, errorText, url });
+                    try { revokeAllObjectUrls(blocos); } catch (e) { }
                     setBlocos([]);
                     setBlocosOriginais([]);
                     setIsExistingContent(false);
@@ -730,6 +616,7 @@ export default function Content() {
                 }
                 const data = await res.json();
                 if (!data || !Array.isArray(data.blocos)) {
+                    try { revokeAllObjectUrls(blocos); } catch (e) { }
                     setBlocos([]);
                     setBlocosOriginais([]);
                     setIsExistingContent(false);

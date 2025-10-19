@@ -1,13 +1,17 @@
-
 import { useState } from "react";
+import { revokeObjectUrlsFromBloco } from '../utils/fileUtils';
 
+// Hook to manage 'blocos' (content blocks). This implementation keeps any
+// pending File objects on item.meta.pendingFile (or bloco.meta.pendingFile)
+// but never sets a boolean bloco.pendingFile flag. Callers should treat
+// pending uploads as file-like objects stored under meta.pendingFile.
 export function useBlocos(limite = 10) {
   const [blocos, setBlocos] = useState([]);
   const [tipoSelecionado, setTipoSelecionado] = useState("");
   const [conteudoBloco, setConteudoBloco] = useState("");
 
   function getNextLabel(type) {
-    const count = blocos.filter(b => b.tipoSelecionado === type).length + 1;
+    const count = blocos.filter((b) => b.tipoSelecionado === type).length + 1;
     switch (type) {
       case "subtitulo":
         return `Subtítulo ${count}`;
@@ -24,24 +28,25 @@ export function useBlocos(limite = 10) {
     }
   }
 
-  function handleAddBloco(tipo, conteudo, subtipo, meta) {
+  function handleAddBloco(tipo, conteudo, subtipo, meta = {}) {
     if (!tipo || blocos.length >= limite) return;
-    // para imagens, permita adicionar mesmo sem 'conteudo' quando houver um arquivo pendente (upload adiado)
-    if (tipo === 'imagem') {
-      const hasImageSource = (conteudo && String(conteudo).trim()) || (meta && meta.pendingFile);
+
+    // Basic validation per type.
+    if (tipo === "imagem") {
+      const hasImageSource = (conteudo && String(conteudo).trim()) || (meta && meta.pendingFile) || (meta && meta.url);
       if (!hasImageSource) return;
-    } else if (tipo === 'carousel') {
-      // aceita carousel quando meta.items estiver presente e pelo menos um item tem url/pendingFile
+    } else if (tipo === "carousel") {
       const items = meta && meta.items;
-      if (!items || !Array.isArray(items) || !items.some(it => (it && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== ''))))) return;
+      if (!items || !Array.isArray(items) || !items.some((it) => (it && ((it.meta && it.meta.pendingFile) || (it.url && String(it.url).trim() !== ""))))) return;
     } else {
       if (!conteudo || !String(conteudo).trim()) return;
     }
+
     const label = getNextLabel(tipo);
-    let novoBloco;
+    let novoBloco = null;
+
     if (tipo === "imagem") {
-      // se 'meta' for um bloco completo vindo do backend, use-o como autoridade
-      const isFullBloco = meta && (meta.filename || meta.url || meta.nome || meta.tipo);
+      const isFullBloco = meta && (meta.filename || meta.url || meta.nome || meta.type || meta.content_type);
       if (isFullBloco) {
         const blocoFromServer = {
           tipo: label,
@@ -54,142 +59,146 @@ export function useBlocos(limite = 10) {
           type: meta.type || meta.content_type || "",
           created_at: meta.created_at || meta.createdAt || new Date().toISOString(),
         };
-        // Preserve pending upload info when meta contains a pendingFile (e.g., objectURL + File)
-        if (meta && meta.pendingFile) {
-          blocoFromServer.pendingFile = meta.pendingFile;
-        }
-        if (meta && meta.temp_id) {
-          blocoFromServer.temp_id = meta.temp_id;
-        }
+
+        if (meta && meta.pendingFile) blocoFromServer.meta = { ...(blocoFromServer.meta || {}), ...(meta || {}), pendingFile: meta.pendingFile };
+        else if (meta) blocoFromServer.meta = { ...(blocoFromServer.meta || {}), ...(meta || {}) };
+
+        if (meta && meta.temp_id) blocoFromServer.temp_id = meta.temp_id;
         novoBloco = blocoFromServer;
       } else {
-      // usa metadados do upload quando disponíveis, senão extrai da URL
-      const nome = (meta && meta.nome) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
-      const filename = (meta && meta.filename) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
-      const type = (meta && meta.type) || "image/png";
-      const created_at = (meta && meta.created_at) || new Date().toISOString();
-      novoBloco = {
-        tipo: label,
-        conteudo,
-        tipoSelecionado: tipo,
-        subtipo: subtipo ?? "",
-        // se houver meta.url (objectUrl de preview) use-a para mostrar preview local
-        url: (meta && meta.url) || conteudo,
-        nome,
-        filename,
-        type,
-        created_at,
-        // se houver meta com pendingFile, mantenha para upload posterior
-        pendingFile: meta && meta.pendingFile ? meta.pendingFile : undefined,
-        temp_id: meta && meta.temp_id ? meta.temp_id : undefined
-      };
+        const nome = (meta && meta.nome) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
+        const filename = (meta && meta.filename) || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").slice(3).join("/") : "");
+        const type = (meta && meta.type) || "image/png";
+        const created_at = (meta && meta.created_at) || new Date().toISOString();
+
+        novoBloco = {
+          tipo: label,
+          conteudo,
+          tipoSelecionado: tipo,
+          subtipo: subtipo ?? "",
+          url: (meta && meta.url) || conteudo,
+          nome,
+          filename,
+          type,
+          created_at,
+          meta: meta && Object.keys(meta).length ? { ...(meta || {}) } : undefined,
+        };
+
+        if (meta && meta.pendingFile) novoBloco.meta = { ...(novoBloco.meta || {}), pendingFile: meta.pendingFile };
+        if (meta && meta.temp_id) novoBloco.temp_id = meta.temp_id;
       }
-    } else if (tipo === 'carousel') {
-      // cria bloco do tipo carousel usando meta.items quando fornecido
+    } else if (tipo === "carousel") {
       const items = meta && meta.items ? meta.items : [];
       novoBloco = {
         tipo: label,
         conteudo: null,
         tipoSelecionado: tipo,
         subtipo: "",
-        items: items.map(it => ({
+        items: items.map((it) => ({
           url: it.url || "",
           subtipo: it.subtipo || "",
-          meta: it.meta || undefined,
-          nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split('/').pop()) || "",
-          filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
-          temp_id: it.meta && it.meta.temp_id ? it.meta.temp_id : undefined
+          meta: it.meta && Object.keys(it.meta).length ? { ...(it.meta || {}) } : undefined,
+          nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split("/").pop()) || "",
+          filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split("/").slice(3).join("/")) || "",
+          temp_id: it.meta && it.meta.temp_id ? it.meta.temp_id : undefined,
         })),
         created_at: new Date().toISOString(),
       };
-      // Mark block-level pendingFile if any item has a pendingFile
-      try {
-        const anyPending = Array.isArray(novoBloco.items) && novoBloco.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
-        if (anyPending) novoBloco.pendingFile = true;
-      } catch (e) { }
     } else {
       novoBloco = { tipo: label, conteudo, tipoSelecionado: tipo };
     }
-    console.debug('[useBlocos] adicionando bloco:', novoBloco);
-    setBlocos([...blocos, novoBloco]);
+
+    setBlocos((prev) => [...prev, novoBloco]);
     setConteudoBloco("");
     setTipoSelecionado("");
     return novoBloco;
   }
 
   function handleRemoveBloco(idx) {
-    setBlocos(blocos.filter((_, i) => i !== idx));
+    setBlocos((prev) => {
+      const target = prev[idx];
+      try { revokeObjectUrlsFromBloco(target); } catch (e) { }
+      return prev.filter((_, i) => i !== idx);
+    });
   }
 
-  function handleEditBloco(idx, tipo, conteudo, subtipo, meta) {
-    const bloco = blocos[idx];
-    const novosBlocos = [...blocos];
-    if (tipo === "imagem") {
-      const isFullBloco = meta && (meta.filename || meta.url || meta.nome || meta.tipo);
-      if (isFullBloco) {
-        novosBlocos[idx] = {
+  function handleEditBloco(idx, tipo, conteudo, subtipo, meta = {}) {
+    setBlocos((prev) => {
+      const bloco = prev[idx] || {};
+      const novos = [...prev];
+
+      if (tipo === "imagem") {
+        const isFullBloco = meta && (meta.filename || meta.url || meta.nome || meta.type || meta.content_type);
+        if (isFullBloco) {
+          const updated = {
+            ...bloco,
+            tipo: bloco.tipo || getNextLabel(tipo),
+            tipoSelecionado: tipo,
+            conteudo: meta.url || meta.conteudo || conteudo,
+            subtipo: meta.subtipo ?? subtipo ?? bloco.subtipo ?? "",
+            url: meta.url || conteudo,
+            nome: meta.nome || bloco.nome || "",
+            filename: meta.filename || bloco.filename || "",
+            type: meta.type || meta.content_type || bloco.type || "",
+            created_at: meta.created_at || meta.createdAt || bloco.created_at || new Date().toISOString(),
+          };
+
+          if (meta && meta.pendingFile) updated.meta = { ...(updated.meta || {}), ...(meta || {}), pendingFile: meta.pendingFile };
+          else if (meta && Object.keys(meta).length) updated.meta = { ...(updated.meta || {}), ...(meta || {}) };
+
+          if (meta && meta.temp_id) updated.temp_id = meta.temp_id;
+          novos[idx] = updated;
+        } else {
+          const nome = (meta && meta.nome) || bloco.nome || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
+          const filename = (meta && meta.filename) || bloco.filename || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").slice(3).join("/") : "");
+          const type = (meta && meta.type) || bloco.type || "image/png";
+          const created_at = (meta && meta.created_at) || bloco.created_at || new Date().toISOString();
+
+          const updated = {
+            ...bloco,
+            tipoSelecionado: tipo,
+            conteudo,
+            subtipo: subtipo ?? "",
+            url: (meta && meta.url) || conteudo,
+            nome,
+            filename,
+            type,
+            created_at,
+          };
+
+          if (meta && meta.pendingFile) updated.meta = { ...(updated.meta || {}), ...(meta || {}), pendingFile: meta.pendingFile };
+          else if (meta && Object.keys(meta).length) updated.meta = { ...(updated.meta || {}), ...(meta || {}) };
+
+          novos[idx] = updated;
+        }
+      } else if (tipo === "carousel") {
+        const items = meta && meta.items ? meta.items : (bloco.items || []);
+        novos[idx] = {
           ...bloco,
-          tipo: bloco.tipo || getNextLabel(tipo),
           tipoSelecionado: tipo,
-          conteudo: meta.url || meta.conteudo || conteudo,
-          subtipo: meta.subtipo ?? subtipo ?? bloco.subtipo ?? "",
-          url: meta.url || conteudo,
-          nome: meta.nome || bloco.nome || "",
-          filename: meta.filename || bloco.filename || "",
-          type: meta.type || meta.content_type || bloco.type || "",
-          created_at: meta.created_at || meta.createdAt || bloco.created_at || new Date().toISOString(),
+          conteudo: null,
+          items: items.map((it) => ({
+            url: it.url || "",
+            subtipo: it.subtipo || "",
+            meta: it.meta && Object.keys(it.meta).length ? { ...(it.meta || {}) } : undefined,
+            nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split("/").pop()) || "",
+            filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split("/").slice(3).join("/")) || "",
+          })),
         };
-        if (meta && meta.pendingFile) {
-          novosBlocos[idx].pendingFile = meta.pendingFile;
-        }
-        if (meta && meta.temp_id) {
-          novosBlocos[idx].temp_id = meta.temp_id;
-        }
       } else {
-      const nome = (meta && meta.nome) || bloco.nome || (conteudo && conteudo.startsWith("gs://") ? conteudo.split("/").pop() : "");
-      const filename = (meta && meta.filename) || bloco.filename || (conteudo && conteudo.startsWith("gs://") ? conteudo.split('/').slice(3).join('/') : "");
-      const type = (meta && meta.type) || bloco.type || "image/png";
-      const created_at = (meta && meta.created_at) || bloco.created_at || new Date().toISOString();
-      novosBlocos[idx] = {
-        ...bloco,
-        tipoSelecionado: tipo,
-        conteudo,
-        subtipo: subtipo ?? "",
-        // use meta.url (preview) quando disponível
-        url: (meta && meta.url) || conteudo,
-        nome,
-        filename,
-        type,
-        created_at
-      };
+        novos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };
       }
-    } else if (tipo === 'carousel') {
-      const items = meta && meta.items ? meta.items : (bloco.items || []);
-      novosBlocos[idx] = {
-        ...bloco,
-        tipoSelecionado: tipo,
-        conteudo: null,
-        items: items.map(it => ({
-          url: it.url || "",
-          subtipo: it.subtipo || "",
-          meta: it.meta || undefined,
-          nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split('/').pop()) || "",
-          filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split('/').slice(3).join('/')) || "",
-        })),
-      };
-      // propagate pending state if any item contains pendingFile
-      try {
-        const anyPending = Array.isArray(novosBlocos[idx].items) && novosBlocos[idx].items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile))));
-        if (anyPending) novosBlocos[idx].pendingFile = true;
-      } catch (e) { }
-    } else {
-      novosBlocos[idx] = { ...bloco, tipoSelecionado: tipo, conteudo };
-    }
-    setBlocos(novosBlocos);
+
+      return novos;
+    });
   }
 
   function resetBlocos() {
-    setBlocos([]);
+    // revoke any object URLs before clearing
+    setBlocos((prev) => {
+      try { prev.forEach(b => revokeObjectUrlsFromBloco(b)); } catch (e) { }
+      return [];
+    });
     setTipoSelecionado("");
     setConteudoBloco("");
   }

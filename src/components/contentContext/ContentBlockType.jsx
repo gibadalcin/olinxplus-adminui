@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { uploadLogo, uploadContentImage, getSignedContentUrl } from "../../api";
 import { getAuth } from "firebase/auth";
 import useIsMasterAdmin from "../../hooks/useIsMasterAdmin";
@@ -49,6 +49,12 @@ export default function ContentBlockType({
         }
     }, [blocos]);
     const [editIdx, setEditIdx] = useState(null);
+    // util: detecta se um objeto se parece com File/Blob
+    function isFileLike(x) {
+        try {
+            return x && typeof x === 'object' && (typeof x.name === 'string' || typeof x.size === 'number');
+        } catch (e) { return false; }
+    }
     // Subtipo de imagem (apenas para blocos de imagem)
     // Se vier o prop subtipo, prioriza ele, senão usa o estado local
     const [subtipoImagem, setSubtipoImagem] = useState(subtipo || "");
@@ -72,6 +78,31 @@ export default function ContentBlockType({
     const [showPathMap, setShowPathMap] = useState({});
     // mapa para alternar edição de URL por item do carousel
     const [showUrlEditMap, setShowUrlEditMap] = useState({});
+
+    // Deterministic modal validation calc: se o modal tem mídia pronta para Salvar/Adicionar
+    const isModalImageReady = useMemo(() => {
+        let ready = false;
+        try {
+            if (tipoSelecionado === 'imagem') {
+                ready = Boolean(subtipoImagem && (uploadedMeta?.pendingFile || (conteudo && conteudo.trim() !== "")));
+            } else if (tipoSelecionado === 'carousel') {
+                ready = Array.isArray(carouselImagens) && carouselImagens.some(it => it && it.subtipo && ((it.meta && isFileLike(it.meta.pendingFile)) || (it.url && String(it.url).trim() !== "")));
+            } else {
+                ready = Boolean(conteudo && conteudo.trim() !== "");
+            }
+            // defesa adicional: uploadedMeta/url ou qualquer item do carousel com pendingFile deve permitir salvar
+            if (!ready) {
+                if (uploadedMeta && (uploadedMeta.pendingFile || (uploadedMeta.url && String(uploadedMeta.url).trim() !== ""))) {
+                    ready = true;
+                }
+            }
+            if (!ready && Array.isArray(carouselImagens)) {
+                const anyItem = carouselImagens.some(it => it && ((it.meta && isFileLike(it.meta.pendingFile)) || (it.url && String(it.url).trim() !== "")));
+                if (anyItem) ready = true;
+            }
+        } catch (e) { ready = false; }
+        return ready;
+    }, [tipoSelecionado, subtipoImagem, uploadedMeta, conteudo, carouselImagens]);
 
     // estilos padrão de botões usados no modal
     const BTN = {
@@ -110,10 +141,11 @@ export default function ContentBlockType({
         if (!b) return 'Bloco ausente';
         // Heurística: se houver URL, pendingFile ou items com mídias, consideramos válido
         try {
-            if ((b.url && String(b.url).trim() !== '') || (b.pendingFile)) return null;
+            if ((b.url && String(b.url).trim() !== '') || (isFileLike(b.pendingFile))) return null;
+            if ((b.url && String(b.url).trim() !== '') || (isFileLike(b.pendingFile) || (b.meta && isFileLike(b.meta.pendingFile)))) return null;
             if (b.conteudo && String(b.conteudo).trim() !== '') return null;
             if (Array.isArray(b.items) && b.items.length > 0) {
-                const ok = b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && it.meta.pendingFile) || (it.pendingFile)));
+                const ok = b.items.some(it => it && ((it.url && String(it.url).trim() !== '') || (it.meta && isFileLike(it.meta.pendingFile)) || isFileLike(it.pendingFile)));
                 if (ok) return null;
                 return 'Carousel sem mídias válidas';
             }
@@ -479,14 +511,14 @@ export default function ContentBlockType({
                                 const isMediaBlock = ['imagem', 'carousel', 'video'].includes(tipo)
                                     || (Array.isArray(bloco.items) && bloco.items.length > 0)
                                     || hasUrlLike
-                                    || bloco && bloco.pendingFile
+                                    || (bloco && isFileLike(bloco.pendingFile))
                                     || hasTypeMedia;
                                 if (!isMediaBlock) return null; // don't render any thumbnail area for pure text blocks
 
                                 // Detect by content instead of relying on the human-readable `tipo` text
                                 const isCarousel = Array.isArray(bloco.items) && bloco.items.length > 0;
                                 const hasUrl = bloco.url && String(bloco.url).trim() !== '';
-                                const hasPending = bloco.pendingFile || (Array.isArray(bloco.items) && bloco.items.some(it => it && (it.meta && it.meta.pendingFile || it.pendingFile)));
+                                const hasPending = (isFileLike(bloco.pendingFile) || (bloco.meta && isFileLike(bloco.meta.pendingFile))) || (Array.isArray(bloco.items) && bloco.items.some(it => it && ((it.meta && isFileLike(it.meta.pendingFile)) || isFileLike(it.pendingFile))));
                                 if (isCarousel) {
                                     return (
                                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -536,7 +568,7 @@ export default function ContentBlockType({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <strong style={{ color: "#4cd964" }}>{bloco.tipo}</strong>
                                     {(() => {
-                                        const hasPending = (bloco && bloco.pendingFile) || (Array.isArray(bloco.items) && bloco.items.some(it => (it && ((it.pendingFile) || (it.meta && it.meta.pendingFile)))));
+                                        const hasPending = (isFileLike(bloco && bloco.pendingFile) || (bloco && bloco.meta && isFileLike(bloco.meta.pendingFile))) || (Array.isArray(bloco.items) && bloco.items.some(it => it && (isFileLike(it.pendingFile) || (it.meta && isFileLike(it.meta.pendingFile)))));
                                         if (!hasPending) return null;
                                         return (
                                             <span style={{ background: '#ffcc00', color: '#000', padding: '2px 6px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>Upload pendente</span>
@@ -725,10 +757,8 @@ export default function ContentBlockType({
                         {renderConteudoInput()}
                         {/* determina se o bloco de imagem tem dados suficientes para adicionar/editar */}
                         {(() => {
-                            // Validação mais robusta para habilitar o botão de salvar:
-                            // - imagens: precisa ter subtipo e pendingFile ou url
-                            // - carousel: ao menos um item com subtipo e pendingFile ou url
-                            // - outros tipos: conteudo não vazio
+                            // Move validation to a useMemo above render via closure - compute here for compatibility
+                            // but keep the logic identical. We'll compute isImageReady using explicit checks.
                             let isImageReady = false;
                             if (tipoSelecionado === 'imagem') {
                                 isImageReady = Boolean(subtipoImagem && (uploadedMeta?.pendingFile || (conteudo && conteudo.trim() !== "")));
@@ -737,7 +767,7 @@ export default function ContentBlockType({
                             } else {
                                 isImageReady = Boolean(conteudo && conteudo.trim() !== "");
                             }
-                            // validação defensiva: se houver upload pendente ou um uploadedMeta/url válido, permita salvar
+                            // defesa adicional: uploadedMeta/url or any carousel item with pendingFile should allow save
                             if (!isImageReady) {
                                 if (uploadedMeta && (uploadedMeta.pendingFile || (uploadedMeta.url && String(uploadedMeta.url).trim() !== ""))) {
                                     isImageReady = true;
@@ -808,7 +838,7 @@ export default function ContentBlockType({
                                     {editIdx === null ? (
                                         <button
                                             type="button"
-                                            disabled={!isImageReady}
+                                            disabled={!isModalImageReady}
                                             onClick={() => {
                                                 if (tipoSelecionado === "imagem") {
                                                     onAddBloco(tipoSelecionado, conteudo, subtipoImagem, uploadedMeta);
@@ -843,7 +873,7 @@ export default function ContentBlockType({
                                     ) : (
                                         <button
                                             type="button"
-                                            disabled={!isImageReady}
+                                            disabled={!isModalImageReady}
                                             onClick={() => {
                                                 if (tipoSelecionado === "imagem") {
                                                     onEditBloco(editIdx, tipoSelecionado, conteudo, subtipoImagem, uploadedMeta);
