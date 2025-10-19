@@ -79,6 +79,7 @@ export default function Dashboard() {
                 alignItems: "center",
                 justifyContent: "center",
                 flexDirection: isMobile ? "column" : "row",
+                overflow: "hidden",
             }}>
                 {/* COLUNA 1: LOGOMARCA/BRANDING (Desktop Only) */}
                 {!isMobile && (
