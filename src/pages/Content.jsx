@@ -733,7 +733,6 @@ export default function Content() {
             return;
         }
         lastUrlRef.current = url;
-        console.log('Buscando blocos na URL:', url);
         fetch(url)
             .then(async res => {
                 const contentType = res.headers.get('content-type');
