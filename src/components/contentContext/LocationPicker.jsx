@@ -24,6 +24,28 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
+    // Auto-fill region name when tipoRegiao changes and coordinates are available
+    useEffect(() => {
+        let mounted = true;
+        async function autoFill() {
+            try {
+                const lat = latitude;
+                const lon = longitude;
+                const tipo = (tipoRegiaoState || '').toString();
+                if (lat && lon && tipo) {
+                    const nome = await buscarNomeRegiao(lat, lon, tipo);
+                    if (mounted && nome) {
+                        setAddress(nome);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+        autoFill();
+        return () => { mounted = false; };
+    }, [tipoRegiaoState, latitude, longitude]);
+
 
     async function buscarNomeRegiao(lat, lon, tipoRegiao) {
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reverse-geocode?lat=${lat}&lon=${lon}`);

@@ -164,6 +164,7 @@ export default function Content() {
     const [longitude, setLongitude] = useState("");
     const [tipoRegiao, setTipoRegiao] = useState("");
     const [nomeRegiao, setNomeRegiao] = useState("");
+    const [radiusMeters, setRadiusMeters] = useState("");
     const [tipoBloco, setTipoBloco] = useState("");
     const [showModal, setShowModal] = useState(false);
     const [showContent, setShowContent] = useState(false);
@@ -280,6 +281,19 @@ export default function Content() {
             await attachBlobFilesToBlocos(blocos);
         } catch (err) {
             console.warn('[handleSubmit] falha ao anexar blob files:', err);
+        }
+
+        // Validação leve de região: se o admin selecionou rua, peça lat/lon
+        const tReg = (tipoRegiao || '').toString().trim().toLowerCase();
+        const latVal = latitude && String(latitude).trim() !== '';
+        const lonVal = longitude && String(longitude).trim() !== '';
+        if (tReg === 'street' || tReg === 'rua' || tReg === 'rodovia') {
+            if (!latVal || !lonVal) {
+                setSnackbarMsg('Ao salvar conteúdo para uma rua, recomendamos preencher latitude e longitude para garantir localização precisa.');
+                setSnackbarSeverity('warning');
+                setSnackbarOpen(true);
+                // allow user to proceed after warning but do not block save
+            }
         }
 
         if (blocosIguais(blocos, blocosOriginais)) {
@@ -609,6 +623,11 @@ export default function Content() {
             }
 
             const payload = { nome_marca: marca, blocos: blocosLimpos, latitude: parseFloat(latitude), longitude: parseFloat(longitude), tipo_regiao: tipoRegiao, nome_regiao: nomeRegiao };
+            // incluir campo opcional radius_m quando definido pelo admin
+            try {
+                const r = Number(radiusMeters);
+                if (!isNaN(r) && r > 0) payload.radius_m = r;
+            } catch (e) { }
 
             // client-side validation to avoid avoidable 422 from backend for malformed button blocks
             function validateBlocosForSave(list) {
@@ -954,17 +973,24 @@ export default function Content() {
                                     gap: isMobile ? ".8rem" : "1.5rem",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    maxWidth: isMobile ? "96vw" : "auto",
+                                    maxWidth: isMobile ? "96vw" : "1280px",
                                     padding: "20px"
                                 }}
                             >
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
+                                    flexDirection: 'column',
                                     gap: '1rem',
                                     width: isMobile ? '100%' : 'auto',
                                     minWidth: isMobile ? 'auto' : '800px',
                                 }}>
+                                    <div style={{ marginTop: 8, color: '#fff', fontSize: 13, width: isMobile ? '100%' : '780px' }}>
+                                        <strong>Ajuda:</strong> selecione o nível de região (Rua/Bairro/Cidade/Estado/País). Para <em>Rua</em>, preencha latitude e longitude para correspondência precisa. Opcionalmente, defina um <em>Raio (m)</em> para controlar o alcance do conteúdo (usado pelo app mobile). Valores vazios serão ignorados.
+                                        <br />
+                                        <strong>Importante:</strong> Ao clicar na localização desejada diretamente no mapa, a latitude e longitude serão preenchidas automaticamente.
+                                    </div>
+
                                     <LocationPicker
                                         latitude={latitude}
                                         longitude={longitude}
@@ -974,6 +1000,17 @@ export default function Content() {
                                         setTipoRegiao={handleChangeTipoRegiao}
                                         nomeRegiao={nomeRegiao}
                                         setNomeRegiao={setNomeRegiao}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginTop: 8, maxWidth: '420px' }}>
+                                    <label style={{ color: '#fff', fontSize: 13 }}>Raio (metros, opcional)</label>
+                                    <input
+                                        type="number"
+                                        value={radiusMeters}
+                                        onChange={e => setRadiusMeters(e.target.value)}
+                                        placeholder="ex.: 50"
+                                        style={{ maxWidth: '420px', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', marginTop: 6 }}
                                     />
                                 </div>
                                 <ContentBlockType
@@ -1069,10 +1106,10 @@ export default function Content() {
                         onSubmit={handleSubmit}
                         disabled={
                             !marca ||
-                            !latitude ||
-                            !longitude ||
                             !tipoRegiao ||
                             !nomeRegiao ||
+                            // require lat/lon only for rua (street); otherwise allow empty coords
+                            ((tipoRegiao && tipoRegiao.toString().toLowerCase() === 'rua') && (!latitude || !longitude)) ||
                             (blocos.length === 0 && blocosOriginais.length === 0) ||
                             (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
                             ((blocos.length >= blocosOriginais.length) && anyInvalidBlock)
