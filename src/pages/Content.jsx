@@ -165,6 +165,7 @@ export default function Content() {
     const [tipoRegiao, setTipoRegiao] = useState("");
     const [nomeRegiao, setNomeRegiao] = useState("");
     const [radiusMeters, setRadiusMeters] = useState("");
+    const [originalRadius, setOriginalRadius] = useState("");
     const [tipoBloco, setTipoBloco] = useState("");
     const [showModal, setShowModal] = useState(false);
     const [showContent, setShowContent] = useState(false);
@@ -249,6 +250,8 @@ export default function Content() {
                 setBlocosOriginais([]);
                 setTipoBloco("");
                 setIsExistingContent(false);
+                // reset radius states so UI no longer considers it a pending change
+                try { setRadiusMeters(""); setOriginalRadius(""); } catch (e) { }
             } else if (data.action === "saved") {
                 setSnackbarMsg("Conteúdo salvo com sucesso!");
                 setSnackbarSeverity("success");
@@ -257,6 +260,19 @@ export default function Content() {
                 setBlocos(normalizedSavedBlocos);
                 setBlocosOriginais(normalizedSavedBlocos);
                 setIsExistingContent(true);
+                // Ensure the radius state reflects the saved value so the form is no longer dirty
+                try {
+                    if (typeof data.radius_m !== 'undefined' && data.radius_m !== null) {
+                        setRadiusMeters(String(data.radius_m));
+                        setOriginalRadius(String(data.radius_m));
+                    } else if (payload && typeof payload.radius_m !== 'undefined' && payload.radius_m !== null) {
+                        setRadiusMeters(String(payload.radius_m));
+                        setOriginalRadius(String(payload.radius_m));
+                    } else {
+                        setRadiusMeters("");
+                        setOriginalRadius("");
+                    }
+                } catch (e) { /* ignore UI sync errors */ }
             } else {
                 setSnackbarMsg("Operação realizada!");
                 setSnackbarSeverity("success");
@@ -296,8 +312,11 @@ export default function Content() {
             }
         }
 
-        if (blocosIguais(blocos, blocosOriginais)) {
-            setSnackbarMsg('Nenhuma alteração detectada nos blocos. Nada foi salvo.');
+        // Consider blocos and radius changes when deciding if there are unsaved changes
+        const blocosChanged = !blocosIguais(blocos, blocosOriginais);
+        const radiusChanged = String(radiusMeters || "") !== String(originalRadius || "");
+        if (!blocosChanged && !radiusChanged) {
+            setSnackbarMsg('Nenhuma alteração detectada nos blocos nem no raio. Nada foi salvo.');
             setSnackbarSeverity('info');
             setSnackbarOpen(true);
             return;
@@ -702,6 +721,19 @@ export default function Content() {
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
                 const normalizedSavedBlocos = normalizeBlocosFromServer(savedBlocos);
                 setBlocos(normalizedSavedBlocos); setBlocosOriginais(normalizedSavedBlocos); setIsExistingContent(true);
+                // sync radius state with saved value so the form is no longer considered dirty
+                try {
+                    if (typeof data.radius_m !== 'undefined' && data.radius_m !== null) {
+                        setRadiusMeters(String(data.radius_m));
+                        setOriginalRadius(String(data.radius_m));
+                    } else if (payload && typeof payload.radius_m !== 'undefined' && payload.radius_m !== null) {
+                        setRadiusMeters(String(payload.radius_m));
+                        setOriginalRadius(String(payload.radius_m));
+                    } else {
+                        setRadiusMeters("");
+                        setOriginalRadius("");
+                    }
+                } catch (e) { /* ignore UI sync errors */ }
             } else {
                 setSnackbarMsg('Operação realizada!'); setSnackbarSeverity('success');
             }
@@ -717,8 +749,9 @@ export default function Content() {
     function handleChangeMarca(novaMarca) {
         // Mostrar modal apenas se houver alterações não salvas entre blocos e blocosOriginais
         try {
-            const hasUnsaved = !(Array.isArray(blocos) && Array.isArray(blocosOriginais) && blocosIguais(blocos, blocosOriginais));
-            if (hasUnsaved) {
+            const blocosChanged = !(Array.isArray(blocos) && Array.isArray(blocosOriginais) && blocosIguais(blocos, blocosOriginais));
+            const radiusChanged = String(radiusMeters || "") !== String(originalRadius || "");
+            if (blocosChanged || radiusChanged) {
                 setNextMarca(novaMarca);
                 setShowModal(true);
                 return;
@@ -773,11 +806,33 @@ export default function Content() {
                     setBlocos([]);
                     setBlocosOriginais([]);
                     setIsExistingContent(false);
+                    // clear radius if no content
+                    setRadiusMeters("");
+                    setOriginalRadius("");
                 } else {
-                    setBlocos(data.blocos);
-                    setBlocosOriginais(data.blocos);
+                    // normalize server blocos before setting state
+                    const normalized = normalizeBlocosFromServer(data.blocos || []);
+                    setBlocos(normalized);
+                    setBlocosOriginais(normalized);
                     // marca que existe conteúdo previamente salvo para essa combinação de marca/região
-                    setIsExistingContent(Array.isArray(data.blocos) && data.blocos.length > 0);
+                    setIsExistingContent(Array.isArray(normalized) && normalized.length > 0);
+
+                    // Preencher metadados de localização / raio para o formulário
+                    try {
+                        if (typeof data.latitude !== 'undefined' && data.latitude !== null) setLatitude(data.latitude);
+                        if (typeof data.longitude !== 'undefined' && data.longitude !== null) setLongitude(data.longitude);
+                        if (data.tipo_regiao) setTipoRegiao(data.tipo_regiao);
+                        if (data.nome_regiao) setNomeRegiao(data.nome_regiao);
+                        if (typeof data.radius_m !== 'undefined' && data.radius_m !== null) {
+                            setRadiusMeters(String(data.radius_m));
+                            setOriginalRadius(String(data.radius_m));
+                        } else {
+                            setRadiusMeters("");
+                            setOriginalRadius("");
+                        }
+                    } catch (e) {
+                        console.warn('Falha ao aplicar metadados retornados (latitude/longitude/radius):', e);
+                    }
                 }
             })
             .catch(err => {
@@ -895,6 +950,10 @@ export default function Content() {
     }
 
     const anyInvalidBlock = Array.isArray(blocos) && blocos.some(isBlockIncomplete);
+
+    // derived flags for UI enable/disable logic
+    const blocosIdenticos = (Array.isArray(blocos) && Array.isArray(blocosOriginais) && blocosIguais(blocos, blocosOriginais));
+    const radiusChangedNow = String(radiusMeters || "") !== String(originalRadius || "");
 
     return (
         <>
@@ -1110,9 +1169,8 @@ export default function Content() {
                             !nomeRegiao ||
                             // require lat/lon only for rua (street); otherwise allow empty coords
                             ((tipoRegiao && tipoRegiao.toString().toLowerCase() === 'rua') && (!latitude || !longitude)) ||
-                            (blocos.length === 0 && blocosOriginais.length === 0) ||
-                            (blocos.length > 0 && blocosIguais(blocos, blocosOriginais)) ||
-                            ((blocos.length >= blocosOriginais.length) && anyInvalidBlock)
+                            // if there are no changes in blocos AND the radius wasn't changed, keep disabled
+                            ((blocos.length === 0 && blocosOriginais.length === 0) || (blocos.length > 0 && blocosIdenticos) || ((blocos.length >= blocosOriginais.length) && anyInvalidBlock)) && !radiusChangedNow
                         }
                         color={botaoCor}
                         label={botaoTexto}
