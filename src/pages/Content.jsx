@@ -895,7 +895,21 @@ export default function Content() {
                     if (typeof meta.disabled === 'undefined' && typeof b.disabled !== 'undefined') meta.disabled = b.disabled;
                     if (!meta.position && b.position) meta.position = b.position;
                     if (!meta.analytics && b.analytics) meta.analytics = b.analytics;
-                    return { ...b, meta, tipoSelecionado: inferred };
+                    // also mirror meta fields back to top-level so display/comparison see the same shape
+                    const normalizedTop = {
+                        label: meta.label || b.label,
+                        action: meta.action || b.action,
+                        variant: typeof meta.variant !== 'undefined' ? meta.variant : b.variant,
+                        color: typeof meta.color !== 'undefined' ? meta.color : b.color,
+                        icon: typeof meta.icon !== 'undefined' ? meta.icon : b.icon,
+                        icon_family: typeof meta.icon_family !== 'undefined' ? meta.icon_family : b.icon_family,
+                        icon_invert: (typeof meta.icon_invert !== 'undefined') ? meta.icon_invert : (typeof b.icon_invert !== 'undefined' ? b.icon_invert : false),
+                        size: typeof meta.size !== 'undefined' ? meta.size : b.size,
+                        position: typeof meta.position !== 'undefined' ? meta.position : b.position,
+                        disabled: (typeof meta.disabled !== 'undefined') ? meta.disabled : (typeof b.disabled !== 'undefined' ? b.disabled : false),
+                        analytics: meta.analytics || b.analytics,
+                    };
+                    return { ...b, ...normalizedTop, meta, tipoSelecionado: inferred };
                 }
                 // also handle image and carousel: copy top-level action into meta.action for editing convenience
                 try {
@@ -903,14 +917,23 @@ export default function Content() {
                     if (tipoLow && tipoLow.startsWith('imagem')) {
                         const meta = b.meta && typeof b.meta === 'object' ? { ...(b.meta || {}) } : {};
                         if (!meta.action && b.action) meta.action = b.action;
-                        return { ...b, meta, tipoSelecionado: inferred || 'imagem' };
+                        const normalizedTop = {
+                            action: meta.action || b.action,
+                        };
+                        return { ...b, ...normalizedTop, meta, tipoSelecionado: inferred || 'imagem' };
                     }
                     if (tipoLow && tipoLow.startsWith('carousel') && Array.isArray(b.items)) {
                         const items = b.items.map(it => {
                             try {
                                 const itMeta = it.meta && typeof it.meta === 'object' ? { ...(it.meta || {}) } : {};
                                 if (!itMeta.action && it.action) itMeta.action = it.action;
-                                return { ...it, meta: itMeta };
+                                // mirror item meta into top-level item fields for consistency
+                                const normalizedItemTop = {
+                                    action: itMeta.action || it.action,
+                                    nome: itMeta.nome || it.nome,
+                                    filename: itMeta.filename || it.filename,
+                                };
+                                return { ...it, ...normalizedItemTop, meta: itMeta };
                             } catch (e) { return it; }
                         });
                         return { ...b, items, tipoSelecionado: inferred || 'carousel' };
