@@ -81,6 +81,17 @@ export default function Content() {
                 filename: bloco.filename || '',
                 // include button-specific metadata for equality checks
                 label: (bloco.meta && bloco.meta.label) || bloco.label || '',
+                // include visual and variant fields so changes like color/variant/icon/size/position are detected
+                variant: (bloco.meta && typeof bloco.meta.variant !== 'undefined') ? bloco.meta.variant : (typeof bloco.variant !== 'undefined' ? bloco.variant : ''),
+                color: (bloco.meta && typeof bloco.meta.color !== 'undefined') ? bloco.meta.color : (typeof bloco.color !== 'undefined' ? bloco.color : ''),
+                icon_family: (bloco.meta && typeof bloco.meta.icon_family !== 'undefined') ? bloco.meta.icon_family : (typeof bloco.icon_family !== 'undefined' ? bloco.icon_family : ''),
+                icon: (bloco.meta && typeof bloco.meta.icon !== 'undefined') ? bloco.meta.icon : (typeof bloco.icon !== 'undefined' ? bloco.icon : ''),
+                // detect icon inversion flag as part of equality to mark changes
+                icon_invert: (bloco.meta && typeof bloco.meta.icon_invert !== 'undefined') ? bloco.meta.icon_invert : (typeof bloco.icon_invert !== 'undefined' ? bloco.icon_invert : false),
+                // detect disabled flag as part of equality so toggling it counts as a change
+                disabled: (bloco.meta && typeof bloco.meta.disabled !== 'undefined') ? bloco.meta.disabled : (typeof bloco.disabled !== 'undefined' ? bloco.disabled : false),
+                size: (bloco.meta && typeof bloco.meta.size !== 'undefined') ? bloco.meta.size : (typeof bloco.size !== 'undefined' ? bloco.size : ''),
+                position: (bloco.meta && typeof bloco.meta.position !== 'undefined') ? bloco.meta.position : (typeof bloco.position !== 'undefined' ? bloco.position : ''),
                 action: (bloco.meta && bloco.meta.action) || bloco.action || null,
                 analytics: (bloco.meta && bloco.meta.analytics) || bloco.analytics || null,
                 items: Array.isArray(bloco.items) ? bloco.items.map(it => ({
@@ -102,6 +113,13 @@ export default function Content() {
             if ((A.filename || '') !== (B.filename || '')) return false;
             // if button metadata differs, consider not equal
             if ((A.label || '') !== (B.label || '')) return false;
+            // visual/variant/icon/size/position differences should mark blocks as changed
+            if ((A.variant || '') !== (B.variant || '')) return false;
+            if ((A.color || '') !== (B.color || '')) return false;
+            if ((A.icon_family || '') !== (B.icon_family || '')) return false;
+            if ((A.icon || '') !== (B.icon || '')) return false;
+            if ((A.size || '') !== (B.size || '')) return false;
+            if ((A.position || '') !== (B.position || '')) return false;
             const aAction = A.action || {};
             const bAction = B.action || {};
             if ((aAction.type || '') !== (bAction.type || '')) return false;
@@ -622,6 +640,8 @@ export default function Content() {
                         variant: meta.variant || undefined,
                         color: meta.color || undefined,
                         icon: meta.icon || undefined,
+                        // persist icon inversion flag if present in meta or top-level
+                        icon_invert: (typeof meta.icon_invert !== 'undefined') ? meta.icon_invert : (typeof b.icon_invert !== 'undefined' ? b.icon_invert : undefined),
                         size: meta.size || undefined,
                         disabled: typeof meta.disabled !== 'undefined' ? meta.disabled : undefined,
                         position: meta.position || undefined,

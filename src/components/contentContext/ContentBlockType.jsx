@@ -168,6 +168,70 @@ export default function ContentBlockType({
         }
     }, [tipoSelecionado, subtipoImagem, uploadedMeta, conteudo, carouselImagens, buttonLabel, buttonActionType, buttonHref, buttonCallbackName]);
 
+    // detecta se algum campo do modal foi alterado em relação ao bloco original (usado ao editar)
+    const modalDirty = useMemo(() => {
+        try {
+            if (editIdx === null) return true; // ao adicionar, consideramos sujo para habilitar adicionar quando ready
+            const original = (Array.isArray(blocos) && blocos[editIdx]) ? blocos[editIdx] : null;
+            if (!original) return true;
+
+            const origMeta = (original.meta && typeof original.meta === 'object') ? { ...(original.meta || {}) } : {};
+            // if original has top-level fields, ensure they appear in origMeta for fair comparison
+            if (!origMeta.label && original.label) origMeta.label = original.label;
+            if (!origMeta.variant && original.variant) origMeta.variant = original.variant;
+            if (!origMeta.color && original.color) origMeta.color = original.color;
+            if (!origMeta.icon && original.icon) origMeta.icon = original.icon;
+            if (!origMeta.icon_family && original.icon_family) origMeta.icon_family = original.icon_family;
+            if (typeof origMeta.icon_invert === 'undefined' && typeof original.icon_invert !== 'undefined') origMeta.icon_invert = original.icon_invert;
+            if (typeof origMeta.disabled === 'undefined' && typeof original.disabled !== 'undefined') origMeta.disabled = original.disabled;
+            if (!origMeta.size && original.size) origMeta.size = original.size;
+            if (!origMeta.position && original.position) origMeta.position = original.position;
+            if (!origMeta.analytics && original.analytics) origMeta.analytics = original.analytics;
+            if (!origMeta.action && original.action) origMeta.action = original.action;
+
+            const normalizeAction = (a) => {
+                if (!a) return null;
+                if (a.type === 'callback') return { type: 'callback', name: String(a.name || '') };
+                return { type: 'link', href: String(a.href || ''), target: String(a.target || '_self') };
+            };
+
+            const normalizeMeta = (m) => ({
+                label: String(m.label || ''),
+                variant: String(m.variant || 'primary'),
+                color: String(m.color || ''),
+                icon_family: String(m.icon_family || 'fi'),
+                icon: String(m.icon || ''),
+                icon_invert: Boolean(typeof m.icon_invert !== 'undefined' ? m.icon_invert : false),
+                size: String(m.size || 'medium'),
+                position: String(m.position || 'center'),
+                disabled: Boolean(typeof m.disabled !== 'undefined' ? m.disabled : false),
+                analytics: String((m.analytics && m.analytics.event_name) ? m.analytics.event_name : ''),
+                action: normalizeAction(m.action || (m.href ? { type: 'link', href: m.href, target: m.target || '_self' } : null)),
+            });
+
+            const currentMeta = {
+                label: String(buttonLabel || ''),
+                variant: String(buttonVariant || 'primary'),
+                color: String(buttonColor || ''),
+                icon_family: String(buttonIconFamily || 'fi'),
+                icon: String(buttonIcon || ''),
+                icon_invert: Boolean(buttonIconInvert || false),
+                size: String(buttonSize || 'medium'),
+                position: String(buttonPosition || 'center'),
+                disabled: Boolean(buttonDisabled || false),
+                analytics: (buttonAnalytics && String(buttonAnalytics).trim() !== '') ? { event_name: String(buttonAnalytics).trim() } : undefined,
+                action: (buttonActionType === 'callback') ? { type: 'callback', name: String(buttonCallbackName || '') } : (buttonActionType === 'link' ? { type: 'link', href: String(buttonHref || ''), target: String(buttonTarget || '_self') } : undefined),
+            };
+
+            const normOrig = normalizeMeta(origMeta);
+            const normCur = normalizeMeta(currentMeta);
+            try {
+                // diagnostic disabled in production
+            } catch (e) { }
+            return JSON.stringify(normOrig) !== JSON.stringify(normCur);
+        } catch (e) { return true; }
+    }, [editIdx, blocos, buttonLabel, buttonActionType, buttonHref, buttonCallbackName, buttonVariant, buttonColor, buttonIconFamily, buttonIcon, buttonIconInvert, buttonSize, buttonPosition, buttonDisabled, buttonAnalytics, buttonTarget]);
+
     // estilos padrão de botões usados no modal
     const BTN = {
         base: { border: 'none', borderRadius: 6, padding: '8px 14px', cursor: 'pointer', fontWeight: 600 },
@@ -822,7 +886,7 @@ export default function ContentBlockType({
                                                 }
                                             }
                                         } catch (e) { /* ignore and fallthrough */ }
-                                        try { console.debug('[blockInvalid] idx=', idx, 'reason=', reason, 'bloco=', bloco); } catch (e) { }
+                                        try { /* debug removed */ } catch (e) { }
                                         return (
                                             <button
                                                 onClick={() => {
@@ -1251,7 +1315,7 @@ export default function ContentBlockType({
                                         ) : (
                                             <button
                                                 type="button"
-                                                disabled={!modalValidation.ready}
+                                                disabled={!(modalValidation.ready && modalDirty)}
                                                 onClick={() => {
                                                     if (tipoSelecionado === "botao_default" || tipoSelecionado === "botao_destaque") {
                                                         const meta = {
@@ -1299,13 +1363,13 @@ export default function ContentBlockType({
                                                     border: "none",
                                                     borderRadius: "4px",
                                                     padding: "10px 18px",
-                                                    cursor: !modalValidation.ready ? "not-allowed" : "pointer",
+                                                    cursor: !(modalValidation.ready && modalDirty) ? "not-allowed" : "pointer",
                                                     fontWeight: "bold",
                                                     fontSize: "1rem",
-                                                    opacity: !modalValidation.ready ? 0.7 : 1,
+                                                    opacity: !(modalValidation.ready && modalDirty) ? 0.7 : 1,
                                                     width: isMobile ? '100%' : 'auto'
                                                 }}
-                                                title={!modalValidation.ready ? modalValidation.reason : 'Salvar edição'}
+                                                title={!(modalValidation.ready && modalDirty) ? (modalValidation.ready ? 'Nenhuma alteração' : modalValidation.reason) : 'Salvar edição'}
                                             >
                                                 Salvar edição
                                             </button>
@@ -1314,6 +1378,11 @@ export default function ContentBlockType({
                                     <div style={{ width: '100%', marginTop: 8, color: modalValidation.ready ? '#4cd964' : '#ff3b30', fontSize: 13 }}>
                                         {modalValidation.ready ? 'Pronto para salvar' : modalValidation.reason}
                                     </div>
+                                    {editIdx !== null && (
+                                        <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                                            <strong>Debug:</strong> modalReady: {String(modalValidation.ready)} — dirty: {String(modalDirty)}
+                                        </div>
+                                    )}
                                 </>
                             );
                         })()}

@@ -123,6 +123,14 @@ export function useBlocos(limite = 10) {
           // also populate top-level fields for compatibility with server-side shapes and validation
           ...(meta && meta.label ? { label: meta.label } : {}),
           ...(meta && meta.action ? { action: meta.action } : {}),
+          ...(meta && typeof meta.variant !== 'undefined' ? { variant: meta.variant } : {}),
+          ...(meta && typeof meta.color !== 'undefined' ? { color: meta.color } : {}),
+          ...(meta && typeof meta.icon !== 'undefined' ? { icon: meta.icon } : {}),
+          ...(meta && typeof meta.icon_family !== 'undefined' ? { icon_family: meta.icon_family } : {}),
+          ...(meta && Object.prototype.hasOwnProperty.call(meta, 'icon_invert') ? { icon_invert: meta.icon_invert } : {}),
+          ...(meta && typeof meta.size !== 'undefined' ? { size: meta.size } : {}),
+          ...(meta && typeof meta.position !== 'undefined' ? { position: meta.position } : {}),
+          ...(meta && Object.prototype.hasOwnProperty.call(meta, 'disabled') ? { disabled: meta.disabled } : {}),
           // mirror analytics object from meta even if it doesn't include event_name
           ...(meta && meta.analytics ? { analytics: { ...(meta.analytics || {}) } } : {}),
           created_at: new Date().toISOString(),
@@ -132,7 +140,7 @@ export function useBlocos(limite = 10) {
       }
     }
 
-    setBlocos((prev) => [...prev, novoBloco]);
+  setBlocos((prev) => [...prev, novoBloco]);
     setConteudoBloco("");
     setTipoSelecionado("");
     return novoBloco;
@@ -228,6 +236,30 @@ export function useBlocos(limite = 10) {
         }
         if (meta && Object.prototype.hasOwnProperty.call(meta, 'action')) {
           if (meta.action) updated.action = meta.action; else delete updated.action;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'variant')) {
+          if (typeof meta.variant !== 'undefined' && meta.variant !== null) updated.variant = meta.variant; else delete updated.variant;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'color')) {
+          if (typeof meta.color !== 'undefined' && meta.color !== null) updated.color = meta.color; else delete updated.color;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'icon')) {
+          if (typeof meta.icon !== 'undefined' && meta.icon !== null) updated.icon = meta.icon; else delete updated.icon;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'icon_family')) {
+          if (typeof meta.icon_family !== 'undefined' && meta.icon_family !== null) updated.icon_family = meta.icon_family; else delete updated.icon_family;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'icon_invert')) {
+          if (typeof meta.icon_invert !== 'undefined' && meta.icon_invert !== null) updated.icon_invert = meta.icon_invert; else delete updated.icon_invert;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'size')) {
+          if (typeof meta.size !== 'undefined' && meta.size !== null) updated.size = meta.size; else delete updated.size;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'position')) {
+          if (typeof meta.position !== 'undefined' && meta.position !== null) updated.position = meta.position; else delete updated.position;
+        }
+        if (meta && Object.prototype.hasOwnProperty.call(meta, 'disabled')) {
+          if (typeof meta.disabled !== 'undefined' && meta.disabled !== null) updated.disabled = meta.disabled; else delete updated.disabled;
         }
         if (meta && Object.prototype.hasOwnProperty.call(meta, 'analytics')) {
           if (meta.analytics) updated.analytics = meta.analytics; else delete updated.analytics;
