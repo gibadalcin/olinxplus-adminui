@@ -6,6 +6,24 @@ export async function getSignedContentUrl(gsUrl, filename) {
   const data = await res.json();
   return data.signed_url || null;
 }
+
+// Batch signed URLs: accepts array of gs:// URLs and returns mapping { gs://...: signed_url|null }
+export async function getSignedContentUrls(gsUrls = []) {
+  if (!Array.isArray(gsUrls) || gsUrls.length === 0) return {};
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/conteudo-signed-urls`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gs_urls: gsUrls })
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.signed_urls || {};
+  } catch (e) {
+    console.error('Erro ao buscar signed urls em lote', e);
+    return {};
+  }
+}
 import axios from "axios";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;

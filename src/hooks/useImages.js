@@ -22,7 +22,26 @@ export function useImagens(ownerId, imageId) {
                 let imagensArray = [];
                 if (ownerId) {
                     const imgs = await fetchImagesByOwner(ownerId, token);
-                    imagensArray = imgs.map(img => img.url);
+                    // Prefer server-provided signed_url if present
+                    const hasSigned = imgs.every(i => i && (i.signed_url || (i.meta && i.meta.signed_url)));
+                    if (hasSigned) {
+                        imagensArray = imgs.map(img => img.signed_url || (img.meta && img.meta.signed_url));
+                    } else {
+                        // Try to batch-request signed urls for all returned gs:// urls
+                        const gsUrls = imgs.map(img => img.url).filter(Boolean);
+                        if (gsUrls.length) {
+                            try {
+                                const { getSignedContentUrls } = await import('../api');
+                                const mapping = await getSignedContentUrls(gsUrls);
+                                imagensArray = gsUrls.map(u => mapping[u] || u);
+                            } catch (e) {
+                                console.error('Falha ao obter signed urls em lote, usando URLs originais', e);
+                                imagensArray = gsUrls;
+                            }
+                        } else {
+                            imagensArray = imgs.map(img => img.url);
+                        }
+                    }
                 } else {
                     const imgs = await fetchImagesByOwner(user.uid, token);
                     imagensArray = imgs.map(img => img.url);
