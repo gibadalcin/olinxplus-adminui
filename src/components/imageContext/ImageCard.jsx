@@ -98,7 +98,7 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
             </div>
             {img.url ? (
                 <img
-                    src={img.url}
+                    src={previewUrl}
                     srcSet={img.webpUrl ? `${img.webpUrl} 1x, ${img.webpUrl2x} 2x` : undefined}
                     width={212}
                     height={119}
