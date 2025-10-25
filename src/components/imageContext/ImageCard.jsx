@@ -2,6 +2,7 @@ import CustomButton from "./../../components/globalContext/CustomButton";
 import { FiPlus, FiX } from "react-icons/fi";
 import useIsMasterAdmin from "./../../hooks/useIsMasterAdmin";
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete }) {
     const navigate = useNavigate();
@@ -14,6 +15,27 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
     const glassColor = isMaster
         ? "rgba(255, 0, 0, 0.12)" // leve vermelho
         : "rgba(1, 46, 87, 0.12)"; // azul contexto olinxra
+
+    const [previewUrl, setPreviewUrl] = useState(img.signed_url || (img.meta && img.meta.signed_url) || img.url);
+
+    useEffect(() => {
+        let mounted = true;
+        async function hydrate() {
+            try {
+                // If original URL is gs:// and we don't have a signed_url yet, ask the server
+                if (previewUrl && typeof previewUrl === 'string' && previewUrl.startsWith && previewUrl.startsWith('gs://')) {
+                    const mod = await import('../../api');
+                    const signed = await mod.getSignedContentUrl(img.url, img.filename || (img.meta && img.meta.filename));
+                    if (mounted && signed) setPreviewUrl(signed);
+                }
+            } catch (e) {
+                // noop, keep original previewUrl
+                console.error('Falha ao obter signed url para imagem', e);
+            }
+        }
+        hydrate();
+        return () => { mounted = false; };
+    }, []); // run once per card
 
     return (
         <div
