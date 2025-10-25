@@ -708,11 +708,11 @@ export default function ContentBlockType({
                             </div>
 
                             {img.url && (
-                                img.subtipo === 'video' ? (
-                                    <video src={img.url} style={{ maxWidth: isMobile ? 160 : 80, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} controls />
+                                (img.url.startsWith && img.url.startsWith('gs://')) ? (
+                                    <ContentImagePreview gsUrl={img.url} signedUrl={img.signed_url || (img.meta && img.meta.signed_url)} isVideo={img.subtipo === 'video'} />
                                 ) : (
-                                    (img.url.startsWith && img.url.startsWith('gs://')) ? (
-                                        <ContentImagePreview gsUrl={img.url} signedUrl={img.signed_url || (img.meta && img.meta.signed_url)} isVideo={img.subtipo === 'video'} />
+                                    img.subtipo === 'video' ? (
+                                        <video src={img.url} style={{ maxWidth: isMobile ? 160 : 80, maxHeight: isMobile ? 120 : 60, borderRadius: 6, marginLeft: 4 }} controls />
                                     ) : (
                                         <img src={img.url} alt="preview" style={{ width: '120px', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
                                     )
