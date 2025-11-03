@@ -1,7 +1,7 @@
 import CustomButton from "../globalContext/CustomButton";
 import { useNavigate } from "react-router-dom";
 
-export default function ContentActions({ onSubmit, disabled, color = "#4cd964", label = "Salvar" }) {
+export default function ContentActions({ onSubmit, disabled, loading = false, color = "#4cd964", label = "Salvar" }) {
     const navigate = useNavigate();
     return (
         <div style={{
@@ -14,6 +14,7 @@ export default function ContentActions({ onSubmit, disabled, color = "#4cd964", 
             <CustomButton
                 type="button"
                 onClick={() => navigate("/dashboard")}
+                disabled={loading} // Desabilita Dashboard durante salvamento
                 style={{
                     background: "#012E57",
                     color: "#fff",
@@ -26,13 +27,14 @@ export default function ContentActions({ onSubmit, disabled, color = "#4cd964", 
             <CustomButton
                 type="button"
                 onClick={e => {
-                    if (!disabled) {
+                    if (!disabled && !loading) {
                         onSubmit(e);
                     } else {
                         e.preventDefault();
                     }
                 }}
                 disabled={disabled}
+                loading={loading} // Mostra spinner durante salvamento
                 style={{
                     background: disabled ? "#bdbdbd" : color,
                     color: disabled ? "#888" : (color === "#ff3b30" ? "#fff" : "#151515"),

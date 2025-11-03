@@ -231,10 +231,12 @@ export default function Content() {
     const [showDeletePreview, setShowDeletePreview] = useState(false);
     const [pendingDeleteList, setPendingDeleteList] = useState([]);
     const [pendingSave, setPendingSave] = useState(null); // { payload, token }
+    const [isSaving, setIsSaving] = useState(false); // Estado de loading para save/delete
 
     const handleConfirmDeletePreview = async () => {
         try {
             if (!pendingSave) return;
+            setIsSaving(true); // Ativar loader
             const { payload, token } = pendingSave;
             const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/conteudo`, {
@@ -298,6 +300,7 @@ export default function Content() {
             setSnackbarOpen(true);
             setShowDeletePreview(false);
             setPendingSave(null);
+            setIsSaving(false); // Desativar loader
         } catch (err) {
             console.error('Erro inesperado ao confirmar delete preview:', err);
             setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
@@ -305,11 +308,14 @@ export default function Content() {
             setSnackbarOpen(true);
             setShowDeletePreview(false);
             setPendingSave(null);
+            setIsSaving(false); // Desativar loader
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true); // Ativar loader
+
         // Converter blobs para File quando aplicável
         try {
             await attachBlobFilesToBlocos(blocos);
@@ -337,6 +343,7 @@ export default function Content() {
             setSnackbarMsg('Nenhuma alteração detectada nos blocos nem no raio. Nada foi salvo.');
             setSnackbarSeverity('info');
             setSnackbarOpen(true);
+            setIsSaving(false); // Desativar loader
             return;
         }
 
@@ -658,6 +665,7 @@ export default function Content() {
                 setSnackbarMsg('Por favor selecione Marca, Tipo de Região e Nome da Região antes de salvar.');
                 setSnackbarSeverity('warning');
                 setSnackbarOpen(true);
+                setIsSaving(false); // Desativar loader
                 return;
             }
 
@@ -699,6 +707,7 @@ export default function Content() {
                 setSnackbarMsg(precheck.message || 'Bloco inválido detectado.');
                 setSnackbarSeverity('error');
                 setSnackbarOpen(true);
+                setIsSaving(false); // Desativar loader
                 return;
             }
 
@@ -713,6 +722,7 @@ export default function Content() {
                     setPendingDeleteList(toDelete);
                     setShowDeletePreview(true);
                     setPendingSave({ payload, token });
+                    setIsSaving(false); // Desativar loader (modal vai gerenciar o loading)
                     return;
                 }
             }
@@ -726,6 +736,7 @@ export default function Content() {
                 setSnackbarMsg('Erro ao cadastrar conteúdo!');
                 setSnackbarSeverity('error');
                 setSnackbarOpen(true);
+                setIsSaving(false); // Desativar loader
                 return;
             }
             const data = await res.json();
@@ -758,11 +769,13 @@ export default function Content() {
                 setSnackbarMsg('Operação realizada!'); setSnackbarSeverity('success');
             }
             setSnackbarOpen(true);
+            setIsSaving(false); // Desativar loader após sucesso
         } catch (err) {
             console.error('Erro inesperado ao cadastrar conteúdo:', err);
             setSnackbarMsg('Erro inesperado ao cadastrar conteúdo!');
             setSnackbarSeverity('error');
             setSnackbarOpen(true);
+            setIsSaving(false); // Desativar loader após erro
         }
     };
 
@@ -1207,6 +1220,7 @@ export default function Content() {
                     <ContentActions
                         onSubmit={handleSubmit}
                         disabled={
+                            isSaving ||
                             !marca ||
                             !tipoRegiao ||
                             !nomeRegiao ||
@@ -1215,6 +1229,7 @@ export default function Content() {
                             // if there are no changes in blocos AND the radius wasn't changed, keep disabled
                             ((blocos.length === 0 && blocosOriginais.length === 0) || (blocos.length > 0 && blocosIdenticos) || ((blocos.length >= blocosOriginais.length) && anyInvalidBlock)) && !radiusChangedNow
                         }
+                        loading={isSaving}
                         color={botaoCor}
                         label={botaoTexto}
                     />
@@ -1226,7 +1241,14 @@ export default function Content() {
                 open={showDeletePreview}
                 toDelete={pendingDeleteList}
                 onConfirm={handleConfirmDeletePreview}
-                onCancel={() => { setShowDeletePreview(false); setPendingSave(null); setPendingDeleteList([]); }}
+                onCancel={() => {
+                    if (!isSaving) { // Só permite cancelar se não estiver salvando
+                        setShowDeletePreview(false);
+                        setPendingSave(null);
+                        setPendingDeleteList([]);
+                    }
+                }}
+                loading={isSaving}
             />
 
             <ConfirmModal

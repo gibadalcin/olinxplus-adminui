@@ -1,4 +1,6 @@
-export default function DeletePreviewModal({ open, toDelete = [], onConfirm, onCancel }) {
+import CustomButton from './CustomButton';
+
+export default function DeletePreviewModal({ open, toDelete = [], onConfirm, onCancel, loading = false }) {
     if (!open) return null;
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
@@ -17,8 +19,21 @@ export default function DeletePreviewModal({ open, toDelete = [], onConfirm, onC
                     )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                    <button onClick={onCancel} style={{ padding: '8px 12px', borderRadius: 6, border: 'none', background: '#ccc', color: '#222', cursor: 'pointer' }}>Cancelar</button>
-                    <button onClick={onConfirm} style={{ padding: '8px 12px', borderRadius: 6, border: 'none', background: '#e74c3c', color: '#fff', cursor: 'pointer' }}>Confirmar remoção</button>
+                    <CustomButton
+                        onClick={onCancel}
+                        disabled={loading}
+                        style={{ background: '#ccc', color: '#222' }}
+                    >
+                        Cancelar
+                    </CustomButton>
+                    <CustomButton
+                        onClick={onConfirm}
+                        loading={loading}
+                        disabled={loading}
+                        style={{ background: '#e74c3c', color: '#fff' }}
+                    >
+                        Confirmar remoção
+                    </CustomButton>
                 </div>
             </div>
         </div>
