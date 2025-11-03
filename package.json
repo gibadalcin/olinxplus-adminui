@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "vite preview",
+    "start": "vite",
+    "preview": "vite preview",
     "lint": "next lint",
     "backend": "cd ../olinxra-backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
     "dev:full": "concurrently \"npm run backend\" \"npm run dev\"",

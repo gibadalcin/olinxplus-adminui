@@ -3,6 +3,7 @@ import { FiPlus, FiX } from "react-icons/fi";
 import useIsMasterAdmin from "./../../hooks/useIsMasterAdmin";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { getSignedContentUrl } from "../../api";
 
 export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete }) {
     const navigate = useNavigate();
@@ -24,8 +25,7 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
             try {
                 // If original URL is gs:// and we don't have a signed_url yet, ask the server
                 if (previewUrl && typeof previewUrl === 'string' && previewUrl.startsWith && previewUrl.startsWith('gs://')) {
-                    const mod = await import('../../api');
-                    const signed = await mod.getSignedContentUrl(img.url, img.filename || (img.meta && img.meta.filename));
+                    const signed = await getSignedContentUrl(img.url, img.filename || (img.meta && img.meta.filename));
                     if (mounted && signed) setPreviewUrl(signed);
                 }
             } catch (e) {

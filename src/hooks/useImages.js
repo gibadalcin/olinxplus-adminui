@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchImagesByOwner } from "../api";
+import { fetchImagesByOwner, getSignedContentUrls } from "../api";
 
 export function useImagens(ownerId, imageId) {
     const [imagens, setImagens] = useState([]);
@@ -53,7 +53,6 @@ export function useImagens(ownerId, imageId) {
                         const gsUrls = imgs.map(img => img.url).filter(Boolean);
                         if (gsUrls.length) {
                             try {
-                                const { getSignedContentUrls } = await import('../api');
                                 const mapping = await getSignedContentUrls(gsUrls);
                                 imagensArray = gsUrls.map(u => mapping[u] || u);
                             } catch (e) {
