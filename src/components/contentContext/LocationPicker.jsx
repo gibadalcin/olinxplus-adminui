@@ -69,12 +69,16 @@ export default function LocationPicker({ latitude, longitude, setLatitude, setLo
                     return;
                 }
                 setTipoRegiaoWarning(false);
-                setLatitude(e.latlng.lat);
-                setLongitude(e.latlng.lng);
-                const nome = await buscarNomeRegiao(e.latlng.lat, e.latlng.lng, tipoRegiaoState);
-                // Força atualização mesmo se valor igual
-                setAddress("");
-                setTimeout(() => setAddress(nome), 0);
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+
+                // Busca o nome da região primeiro
+                const nome = await buscarNomeRegiao(lat, lng, tipoRegiaoState);
+
+                // Depois atualiza tudo de uma vez
+                setLatitude(lat);
+                setLongitude(lng);
+                setAddress(nome);
             }
         });
         return latitude && longitude ? (

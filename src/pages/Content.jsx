@@ -6,7 +6,7 @@ import { revokeAllObjectUrls } from "../utils/fileUtils";
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
 import { useNavigate, useLocation } from "react-router-dom";
-import { Box } from "@mui/material";
+import { Box, CircularProgress } from "@mui/material";
 import Header from "../components/globalContext/Header";
 import MainTitle from "../components/globalContext/MainTitle";
 import Copyright from "../components/globalContext/Copyright";
@@ -232,6 +232,7 @@ export default function Content() {
     const [pendingDeleteList, setPendingDeleteList] = useState([]);
     const [pendingSave, setPendingSave] = useState(null); // { payload, token }
     const [isSaving, setIsSaving] = useState(false); // Estado de loading para save/delete
+    const [isLoadingContent, setIsLoadingContent] = useState(false); // Estado de loading para busca de conteúdo
 
     const handleConfirmDeletePreview = async () => {
         try {
@@ -821,6 +822,7 @@ export default function Content() {
             setBlocos([]);
             setBlocosOriginais([]);
             lastUrlRef.current = "";
+            setIsLoadingContent(false);
             return;
         }
         const url = `${import.meta.env.VITE_API_BASE_URL}/api/conteudo-por-regiao?nome_marca=${encodeURIComponent(marca)}&tipo_regiao=${encodeURIComponent(tipoRegiao)}&nome_regiao=${encodeURIComponent(nomeRegiao)}`;
@@ -829,6 +831,7 @@ export default function Content() {
             return;
         }
         lastUrlRef.current = url;
+        setIsLoadingContent(true); // Ativar loader
         fetch(url)
             .then(async res => {
                 const contentType = res.headers.get('content-type');
@@ -839,6 +842,7 @@ export default function Content() {
                     setBlocos([]);
                     setBlocosOriginais([]);
                     setIsExistingContent(false);
+                    setIsLoadingContent(false);
                     return;
                 }
                 const data = await res.json();
@@ -850,6 +854,7 @@ export default function Content() {
                     // clear radius if no content
                     setRadiusMeters("");
                     setOriginalRadius("");
+                    setIsLoadingContent(false);
                 } else {
                     // normalize server blocos before setting state
                     const normalized = normalizeBlocosFromServer(data.blocos || []);
@@ -874,6 +879,7 @@ export default function Content() {
                     } catch (e) {
                         console.warn('Falha ao aplicar metadados retornados (latitude/longitude/radius):', e);
                     }
+                    setIsLoadingContent(false);
                 }
             })
             .catch(err => {
@@ -881,8 +887,9 @@ export default function Content() {
                 setBlocos([]);
                 setBlocosOriginais([]);
                 setIsExistingContent(false);
+                setIsLoadingContent(false);
             });
-    }, [marca, latitude, longitude, tipoRegiao, nomeRegiao]);
+    }, [marca, tipoRegiao, nomeRegiao]);
 
     // Normalize blocks returned by the server so button blocks always have meta populated
     function normalizeBlocosFromServer(list) {
@@ -1136,6 +1143,65 @@ export default function Content() {
                                         style={{ maxWidth: '420px', padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', marginTop: 6 }}
                                     />
                                 </div>
+
+                                {/* Loader de busca de conteúdo */}
+                                {isLoadingContent && (
+                                    <div style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '3rem 1rem',
+                                        gap: '1rem',
+                                        background: 'rgba(255,255,255,0.08)',
+                                        borderRadius: '12px',
+                                        marginTop: '1rem',
+                                        marginBottom: '1rem'
+                                    }}>
+                                        <CircularProgress
+                                            size={48}
+                                            thickness={4}
+                                            style={{ color: '#4cd964' }}
+                                        />
+                                        <div style={{ color: '#fff', fontSize: '15px', fontWeight: 500 }}>
+                                            Buscando conteúdo para {marca} em {nomeRegiao}...
+                                        </div>
+                                        <div style={{ color: '#bbb', fontSize: '13px' }}>
+                                            Aguarde alguns instantes
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Indicador de "sem conteúdo" após busca */}
+                                {!isLoadingContent && marca && tipoRegiao && nomeRegiao && blocos.length === 0 && (
+                                    <div style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '2rem 1rem',
+                                        gap: '0.5rem',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        borderRadius: '12px',
+                                        marginTop: '1rem',
+                                        marginBottom: '1rem',
+                                        border: '1px dashed rgba(255,255,255,0.2)'
+                                    }}>
+                                        <div style={{ fontSize: '32px', opacity: 0.5 }}>📭</div>
+                                        <div style={{ color: '#fff', fontSize: '14px', fontWeight: 500, opacity: 0.9 }}>
+                                            Nenhum conteúdo encontrado
+                                        </div>
+                                        <div style={{ color: '#bbb', fontSize: '12px', textAlign: 'center', maxWidth: '400px' }}>
+                                            A marca <strong>{marca}</strong> ainda não possui conteúdo cadastrado para <strong>{nomeRegiao}</strong> ({tipoRegiao}).
+                                        </div>
+                                        <div style={{ color: '#4cd964', fontSize: '13px', marginTop: '0.5rem' }}>
+                                            ✨ Adicione o primeiro bloco abaixo!
+                                        </div>
+                                    </div>
+                                )}
+
                                 <ContentBlockType
                                     tipoSelecionado={tipoSelecionado}
                                     setTipoSelecionado={setTipoSelecionado}
