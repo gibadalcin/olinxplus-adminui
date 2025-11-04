@@ -376,6 +376,10 @@ export default function Content() {
                         fd.append('marca', marca || '');
                         fd.append('tipo_regiao', tipoRegiao || '');
                         fd.append('nome_regiao', nomeRegiao || '');
+                        // adiciona arquivo GLB se foi fornecido
+                        if (b.meta && b.meta.glbFile && localIsFileLike(b.meta.glbFile)) {
+                            fd.append('glb_file', b.meta.glbFile);
+                        }
                         const uploaded = await uploadContentImage(fd, token);
                         if (uploaded && uploaded.success) {
                             const serverBloco = uploaded.bloco || uploaded;
@@ -432,6 +436,10 @@ export default function Content() {
                                 fd.append('marca', marca || '');
                                 fd.append('tipo_regiao', tipoRegiao || '');
                                 fd.append('nome_regiao', nomeRegiao || '');
+                                // adiciona arquivo GLB se foi fornecido
+                                if (it.meta && it.meta.glbFile && localIsFileLike(it.meta.glbFile)) {
+                                    fd.append('glb_file', it.meta.glbFile);
+                                }
                                 const uploaded = await uploadContentImage(fd, token);
                                 if (uploaded && uploaded.success) {
                                     const serverBloco = uploaded.bloco || uploaded;
@@ -1088,7 +1096,7 @@ export default function Content() {
                                     gap: isMobile ? ".8rem" : "1.5rem",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    maxWidth: isMobile ? "96vw" : "1280px",
+                                    maxWidth: isMobile ? "86vw" : "1280px",
                                     padding: "20px"
                                 }}
                             >

@@ -40,6 +40,7 @@ export default function ContentBlockType({
     const [showModal, setShowModal] = useState(false);
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
+    const glbInputRef = useRef(null);
     const conteudoFieldRef = useRef(null);
     const blocosContainerRef = useRef(null);
     const lastBlocoRef = useRef(null);
@@ -102,6 +103,7 @@ export default function ContentBlockType({
     const [carouselImagens, setCarouselImagens] = useState([{ url: "", subtipo: "" }]);
     // Metadados do último upload (single image)
     const [uploadedMeta, setUploadedMeta] = useState(null);
+    const [glbFile, setGlbFile] = useState(null);
     // Signed URL for gs:// previews
     const [signedPreviewUrl, setSignedPreviewUrl] = useState(null);
     // Image action (link) states for single image
@@ -251,11 +253,11 @@ export default function ContentBlockType({
         const onMediumChange = () => setIsMedium(mqMedium.matches && !mqMobile.matches);
         onMobileChange();
         onMediumChange();
-        try { if (mqMobile.addEventListener) mqMobile.addEventListener('change', onMobileChange); else mqMobile.addListener(onMobileChange); } catch (e) { }
-        try { if (mqMedium.addEventListener) mqMedium.addEventListener('change', onMediumChange); else mqMedium.addListener(onMediumChange); } catch (e) { }
+        mqMobile.addEventListener('change', onMobileChange);
+        mqMedium.addEventListener('change', onMediumChange);
         return () => {
-            try { if (mqMobile.removeEventListener) mqMobile.removeEventListener('change', onMobileChange); else mqMobile.removeListener(onMobileChange); } catch (e) { }
-            try { if (mqMedium.removeEventListener) mqMedium.removeEventListener('change', onMediumChange); else mqMedium.removeListener(onMediumChange); } catch (e) { }
+            mqMobile.removeEventListener('change', onMobileChange);
+            mqMedium.removeEventListener('change', onMediumChange);
         };
     }, []);
 
@@ -547,6 +549,41 @@ export default function ContentBlockType({
                         >
                             {subtipoImagem ? 'Escolher arquivo' : '<- defina o tipo'}
                         </button>
+                        {/* Input GLB opcional */}
+                        <input
+                            ref={glbInputRef}
+                            type="file"
+                            accept=".glb"
+                            onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    setGlbFile(file);
+                                } else {
+                                    setGlbFile(null);
+                                }
+                            }}
+                            disabled={disabled || !subtipoImagem || subtipoImagem === 'video'}
+                            style={{ display: 'none' }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => glbInputRef.current && glbInputRef.current.click()}
+                            disabled={disabled || !subtipoImagem || subtipoImagem === 'video'}
+                            style={{
+                                padding: '8px 12px',
+                                borderRadius: 6,
+                                border: 'none',
+                                background: (disabled || !subtipoImagem || subtipoImagem === 'video')
+                                    ? '#b2b2b2'
+                                    : (glbFile ? '#4caf50' : '#ff9800'),
+                                color: '#fff',
+                                cursor: (disabled || !subtipoImagem || subtipoImagem === 'video') ? 'not-allowed' : 'pointer',
+                                fontSize: '13px'
+                            }}
+                            title={glbFile ? `GLB: ${glbFile.name}` : 'Modelo 3D customizado (opcional)'}
+                        >
+                            {glbFile ? '✓ GLB Custom' : '+ GLB (opc.)'}
+                        </button>
                         {/* botão Mostrar caminho será renderizado abaixo do nome do arquivo para manter padrão */}
                     </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'stretch' : 'center', marginBottom: 12, flexDirection: isMobile ? 'column' : 'row' }}>
@@ -660,6 +697,41 @@ export default function ContentBlockType({
                                 style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: (disabled || !img.subtipo) ? '#b2b2b2' : '#2196f3', color: '#fff', cursor: (disabled || !img.subtipo) ? 'not-allowed' : 'pointer' }}
                             >
                                 {img.subtipo ? 'Escolher arquivo' : 'Tipo indefinido'}
+                            </button>
+
+                            {/* input GLB para carousel */}
+                            <input
+                                id={`carousel-glb-${idx}`}
+                                type="file"
+                                accept=".glb"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                        const currentMeta = img.meta || {};
+                                        handleCarouselImgChange(idx, "meta", { ...currentMeta, glbFile: file });
+                                    }
+                                }}
+                                disabled={disabled || !img.subtipo || img.subtipo === 'video'}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => document.getElementById(`carousel-glb-${idx}`)?.click()}
+                                disabled={disabled || !img.subtipo || img.subtipo === 'video'}
+                                style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    background: (disabled || !img.subtipo || img.subtipo === 'video')
+                                        ? '#b2b2b2'
+                                        : (img.meta?.glbFile ? '#4caf50' : '#ff9800'),
+                                    color: '#fff',
+                                    cursor: (disabled || !img.subtipo || img.subtipo === 'video') ? 'not-allowed' : 'pointer',
+                                    fontSize: '12px'
+                                }}
+                                title={img.meta?.glbFile ? `GLB: ${img.meta.glbFile.name}` : 'Modelo 3D (opc.)'}
+                            >
+                                {img.meta?.glbFile ? '✓ GLB' : '+ GLB'}
                             </button>
 
                             <div style={{ flex: 1, display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
@@ -1138,8 +1210,8 @@ export default function ContentBlockType({
                         boxShadow: '0 4px 32px rgba(255,255,255,0.18)',
                         padding: isMobile ? '1rem' : isMedium ? '1.25rem' : '2rem',
                         /* largura adaptativa: reduzir minWidth desktop para caber telas menores */
-                        minWidth: isMobile ? '320px' : isMedium ? '580px' : '760px',
-                        maxWidth: '96vw',
+                        minWidth: isMobile ? '280px' : isMedium ? '580px' : '760px',
+                        maxWidth: '86vw',
                         width: isMobile ? '92vw' : isMedium ? '90vw' : 'auto',
                         maxHeight: '90vh',
                         overflow: 'auto',
@@ -1270,6 +1342,10 @@ export default function ContentBlockType({
                                                         if (imageActionHref && String(imageActionHref).trim() !== '') {
                                                             metaWithAction.action = { type: 'link', href: imageActionHref.trim(), target: imageActionTarget, disabled: !!imageActionDisabled };
                                                         }
+                                                        // adiciona o arquivo GLB ao meta se foi selecionado
+                                                        if (glbFile) {
+                                                            metaWithAction.glbFile = glbFile;
+                                                        }
                                                         onAddBloco(tipoSelecionado, conteudo, subtipoImagem, metaWithAction);
                                                     } else if (tipoSelecionado === "carousel") {
                                                         // ensure each item meta.action is present when filled
@@ -1283,6 +1359,7 @@ export default function ContentBlockType({
                                                     setTipoSelecionado("");
                                                     setSubtipoImagem("");
                                                     setUploadedMeta(null);
+                                                    setGlbFile(null);
                                                     setCarouselImagens([{ url: "", subtipo: "" }]);
                                                     setImageActionHref(''); setImageActionTarget('_self'); setImageActionDisabled(false);
                                                     setButtonLabel(""); setButtonActionType('link'); setButtonHref(''); setButtonCallbackName(''); setButtonTarget('_self');
@@ -1370,7 +1447,7 @@ export default function ContentBlockType({
                                             </button>
                                         )}
                                     </div>
-                                    <div style={{ width: '100%', marginTop: 8, color: modalValidation.ready ? '#4cd964' : '#ff3b30', fontSize: 13 }}>
+                                    <div style={{ width: '100%', marginTop: 8, color: modalValidation.ready ? '#4cd964' : '#ff3b30', fontSize: 13, textAlign: isMobile ? 'center' : 'left' }}>
                                         {modalValidation.ready ? 'Pronto para salvar' : modalValidation.reason}
                                     </div>
                                     {editIdx !== null && (
