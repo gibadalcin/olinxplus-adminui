@@ -275,13 +275,14 @@ export default function ImageManager() {
         {/* COLUNA 2: Conteúdo Principal (Azul) */}
         <div
           style={{
-            flex: isMobile ? "none" : 1,
+            flexGrow: isMobile ? 0 : 1,
+            flexShrink: isMobile ? 0 : 1,
+            flexBasis: isMobile ? "auto" : 0,
             width: isMobile ? "100%" : "70%",
             background: MAIN_BG_COLOR,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            flexGrow: 1,
             paddingTop: isMobile ? "1rem" : "0",
             boxSizing: "border-box",
             minHeight: "100vh",
