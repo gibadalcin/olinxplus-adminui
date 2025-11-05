@@ -1,9 +1,29 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import ImageCard from "./ImageCard";
 import Content from "./../../pages/Content";
 
 export default function ImageList({ imagens, isMobile, isAdmin, usuario, onDelete, onAssociate }) {
     const [imagemSelecionada, setImagemSelecionada] = useState(null);
+
+    // ✅ OTIMIZAÇÃO: Memoiza a lista de imagens para evitar re-renderizações
+    const imagensRenderizadas = useMemo(() => {
+        if (!imagens || imagens.length === 0) {
+            return <p style={{ color: "#fff", fontSize: isMobile ? "1em" : "1.2em" }}>Nenhuma imagem cadastrada.</p>;
+        }
+
+        return imagens.map(img => (
+            <ImageCard
+                key={img._id}
+                img={img}
+                isMobile={isMobile}
+                isAdmin={isAdmin}
+                usuario={usuario}
+                onDelete={onDelete}
+                onAssociate={(imgId, ownerUid) => onAssociate(imgId, ownerUid)}
+                onClick={() => setImagemSelecionada(img)}
+            />
+        ));
+    }, [imagens, isMobile, isAdmin, usuario, onDelete, onAssociate]);
 
     if (!imagens || imagens.length === 0) {
         return <p style={{ color: "#fff", fontSize: isMobile ? "1em" : "1.2em" }}>Nenhuma imagem cadastrada.</p>;
@@ -27,18 +47,7 @@ export default function ImageList({ imagens, isMobile, isAdmin, usuario, onDelet
                 width: "100%",
                 margin: "0 auto",
             }}>
-                {imagens.map(img => (
-                    <ImageCard
-                        key={img._id}
-                        img={img}
-                        isMobile={isMobile}
-                        isAdmin={isAdmin}
-                        usuario={usuario}
-                        onDelete={onDelete}
-                        onAssociate={(imgId, ownerUid) => onAssociate(imgId, ownerUid)}
-                        onClick={() => setImagemSelecionada(img)}
-                    />
-                ))}
+                {imagensRenderizadas}
                 {imagemSelecionada && (
                     <Content
                         isMaster={usuario.isMaster}

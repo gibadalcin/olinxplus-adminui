@@ -2,8 +2,7 @@ import CustomButton from "./../../components/globalContext/CustomButton";
 import { FiPlus, FiX } from "react-icons/fi";
 import useIsMasterAdmin from "./../../hooks/useIsMasterAdmin";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { getSignedContentUrl } from "../../api";
+import { useState } from "react";
 
 export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete }) {
     const navigate = useNavigate();
@@ -17,25 +16,10 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
         ? "rgba(255, 0, 0, 0.12)" // leve vermelho
         : "rgba(1, 46, 87, 0.12)"; // azul contexto olinxra
 
-    const [previewUrl, setPreviewUrl] = useState(img.signed_url || (img.meta && img.meta.signed_url) || img.url);
-
-    useEffect(() => {
-        let mounted = true;
-        async function hydrate() {
-            try {
-                // If original URL is gs:// and we don't have a signed_url yet, ask the server
-                if (previewUrl && typeof previewUrl === 'string' && previewUrl.startsWith && previewUrl.startsWith('gs://')) {
-                    const signed = await getSignedContentUrl(img.url, img.filename || (img.meta && img.meta.filename));
-                    if (mounted && signed) setPreviewUrl(signed);
-                }
-            } catch (e) {
-                // noop, keep original previewUrl
-                console.error('Falha ao obter signed url para imagem', e);
-            }
-        }
-        hydrate();
-        return () => { mounted = false; };
-    }, []); // run once per card
+    // ✅ OTIMIZAÇÃO CRÍTICA: Usa signed_url que já vem do backend
+    // O backend já gera signed URLs na chamada /images, não precisa buscar individualmente!
+    const previewUrl = img.signed_url || (img.meta && img.meta.signed_url) || img.url;
+    const [imageLoaded, setImageLoaded] = useState(false);
 
     return (
         <div
@@ -44,7 +28,9 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
                 borderRadius: "14px",
                 padding: isMobile ? "0.5rem" : "1rem",
                 boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
-                flex: "1 1 45%",
+                flexGrow: 1,
+                flexShrink: 1,
+                flexBasis: "45%",
                 maxWidth: "220px", // tamanho máximo menor do card
                 minWidth: "140px",
                 width: "100%",
@@ -75,7 +61,9 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
                     textAlign: "left",
                     fontWeight: 500,
                     letterSpacing: "0.2px",
-                    flex: 1,
+                    flexGrow: 1,
+                    flexShrink: 1,
+                    flexBasis: "auto",
                     justifyContent: "left",
                 }} title={img.nome}>{img.nome}</span>
                 {(isAdmin || (usuario && ownerUid === usuario.uid)) && (
@@ -103,14 +91,17 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
                     width={212}
                     height={119}
                     alt={img.name || "Logo"}
+                    decoding="async"
+                    onLoad={() => setImageLoaded(true)}
                     style={{
                         maxWidth: "100%",
                         height: "auto",
                         objectFit: "contain",
                         borderRadius: 8,
-                        background: "#fff"
+                        background: imageLoaded ? "#fff" : "#f0f0f0",
+                        opacity: imageLoaded ? 1 : 0.7,
+                        transition: "opacity 0.2s ease-in-out"
                     }}
-                    fetchPriority="high" // <-- Correto em React
                 />
             ) : (
                 <div

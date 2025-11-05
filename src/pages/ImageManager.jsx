@@ -77,14 +77,19 @@ export default function ImageManager() {
   const fetchImages = useCallback(async () => {
     if (!usuario) return;
 
+    console.time('⏱️ [ImageManager] fetchImages Total');
     setLoading(true);
     try {
+      console.time('⏱️ [ImageManager] API Call');
       const token = await usuario.getIdToken();
       const idToFetch = isAdmin && showAllAdmins ? null : usuario.uid; // null para todas as imagens (master)
 
       const res = await getImages(token, idToFetch);
+      console.timeEnd('⏱️ [ImageManager] API Call');
 
-      const imagensArray = normalizeImagesResponse(res);
+      // ✅ A API já retorna array normalizado, não precisa processar novamente
+      const imagensArray = Array.isArray(res) ? res : [];
+      console.log('[ImageManager] Imagens carregadas:', imagensArray.length);
       setImagens(imagensArray);
     } catch (error) {
       console.error("Erro ao buscar imagens:", error);
@@ -92,6 +97,7 @@ export default function ImageManager() {
     } finally {
       setLoading(false);
       setImagensLoaded(true);
+      console.timeEnd('⏱️ [ImageManager] fetchImages Total');
     }
   }, [usuario, isAdmin, showAllAdmins]); // Dependências: usuário, status Master/Admin
 
@@ -146,10 +152,18 @@ export default function ImageManager() {
           alert("Erro ao enviar imagem.");
         }
       } else {
-        // Sucesso: Limpa o formulário e recarrega a lista
+        // ✅ OTIMIZAÇÃO: Adiciona imagem localmente ao invés de recarregar tudo
+        const novaImagem = result.data || result.image || {
+          _id: Date.now().toString(),
+          nome,
+          url: result.url,
+          owner_uid: usuario.uid
+        };
+        setImagens(prevImagens => [novaImagem, ...prevImagens]); // Adiciona no início
+
+        // Limpa o formulário
         setNome("");
         setFile(null);
-        await fetchImages(); // Reutiliza a função de busca
       }
     } catch (err) {
       console.error("Erro no upload:", err);
@@ -281,7 +295,7 @@ export default function ImageManager() {
             </div>
           )}
 
-          <FadeIn show={showContent && imagensLoaded} duration="0.6s" distance="40px" style={{ width: "70vw" }}>
+          <FadeIn show={showContent && imagensLoaded} duration="0.2s" distance="20px" style={{ width: "70vw" }}>
             <div
               style={{
                 display: "flex",
