@@ -69,13 +69,14 @@ export default function ImageUploadForm({ file, setFile, nome, setNome, isMobile
                 type="submit"
                 disabled={uploading || !file || !nome}
                 style={{
-                    background: "#4cd964",
-                    color: "#151515",
-                    textShadow: "2px 2px 4px rgba(0,0,0,0.15)",
+                    background: "linear-gradient(90deg, #00e913ff 0%, #04aa20ff 100%)",
+                    color: "#ffffff",
+                    fontWeight: "700",
+                    textShadow: "0 1px 4px rgba(0,0,0,0.15)",
                     width: isMobile ? "90%" : "100%",
                     borderStyle: "solid",
                     borderWidth: "1px",
-                    borderColor: "rgba(255,255,255,0.90)",
+                    borderColor: "#ffffff",
                 }}
             >
                 {uploading ? "Enviando..." : "Enviar"}
