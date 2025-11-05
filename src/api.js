@@ -28,49 +28,34 @@ export async function getSignedContentUrls(gsUrls = []) {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const getImages = async (token, ownerId) => {
-  console.time('🔍 [API] getImages - Total');
   const url = ownerId
   ? `${API_BASE_URL}/images?ownerId=${ownerId}`
   : `${API_BASE_URL}/images`;
   try {
-    console.time('🌐 [API] getImages - Fetch Request');
     const res = await fetch(url, {
       headers: { 
         Authorization: `Bearer ${token}`
-        // ✅ REMOVIDO: Cache-Control causava CORS preflight error
       }
     });
-    console.timeEnd('🌐 [API] getImages - Fetch Request');
     
     if (!res.ok) {
       const errorText = await res.text();
       console.error(`HTTP error! status: ${res.status}\n${errorText}`);
-      console.timeEnd('🔍 [API] getImages - Total');
       return [];
     }
     const contentType = res.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const errorText = await res.text();
       console.error('Did not receive JSON response: ' + errorText);
-      console.timeEnd('🔍 [API] getImages - Total');
       return [];
     }
     
-    console.time('📦 [API] getImages - JSON Parse');
     const data = await res.json();
-    console.timeEnd('📦 [API] getImages - JSON Parse');
-    
-    console.time('🔄 [API] getImages - Normalize');
-    // ✅ OTIMIZAÇÃO: Normalizar imagens no cliente para evitar processamento repetido
     const normalized = Array.isArray(data) ? data : (data?.data || []);
-    console.timeEnd('🔄 [API] getImages - Normalize');
     
-    console.log('📊 [API] getImages - Imagens retornadas:', normalized.length);
-    console.timeEnd('🔍 [API] getImages - Total');
     return normalized;
   } catch (err) {
     console.error('Erro inesperado ao buscar imagens:', err);
-    console.timeEnd('🔍 [API] getImages - Total');
     return [];
   }
 };

@@ -77,19 +77,14 @@ export default function ImageManager() {
   const fetchImages = useCallback(async () => {
     if (!usuario) return;
 
-    console.time('⏱️ [ImageManager] fetchImages Total');
     setLoading(true);
     try {
-      console.time('⏱️ [ImageManager] API Call');
       const token = await usuario.getIdToken();
       const idToFetch = isAdmin && showAllAdmins ? null : usuario.uid; // null para todas as imagens (master)
 
       const res = await getImages(token, idToFetch);
-      console.timeEnd('⏱️ [ImageManager] API Call');
 
-      // ✅ A API já retorna array normalizado, não precisa processar novamente
       const imagensArray = Array.isArray(res) ? res : [];
-      console.log('[ImageManager] Imagens carregadas:', imagensArray.length);
       setImagens(imagensArray);
     } catch (error) {
       console.error("Erro ao buscar imagens:", error);
@@ -97,7 +92,6 @@ export default function ImageManager() {
     } finally {
       setLoading(false);
       setImagensLoaded(true);
-      console.timeEnd('⏱️ [ImageManager] fetchImages Total');
     }
   }, [usuario, isAdmin, showAllAdmins]); // Dependências: usuário, status Master/Admin
 
