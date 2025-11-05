@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { FiCalendar, FiPlus, FiX, FiExternalLink, FiInfo, FiChevronRight, FiChevronLeft, FiSearch, FiEdit, FiTrash2 } from 'react-icons/fi';
+import * as FI from 'react-icons/fi';
+import * as IO from 'react-icons/io5';
+import * as MD from 'react-icons/md';
+import * as FA from 'react-icons/fa';
+import * as BS from 'react-icons/bs';
 import { uploadLogo, uploadContentImage, getSignedContentUrl } from "../../api";
 import { getAuth } from "firebase/auth";
 import useIsMasterAdmin from "../../hooks/useIsMasterAdmin";
