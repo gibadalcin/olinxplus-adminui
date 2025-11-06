@@ -288,7 +288,8 @@ export default function Content() {
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : payload.blocos;
                 const normalizedSavedBlocos = normalizeBlocosFromServer(savedBlocos);
                 setBlocos(normalizedSavedBlocos);
-                setBlocosOriginais(normalizedSavedBlocos);
+                // Deep clone para evitar que blocos e blocosOriginais compartilhem a mesma referência
+                setBlocosOriginais(JSON.parse(JSON.stringify(normalizedSavedBlocos)));
                 setIsExistingContent(true);
                 // Ensure the radius state reflects the saved value so the form is no longer dirty
                 try {
@@ -769,7 +770,10 @@ export default function Content() {
                 setSnackbarSeverity('success');
                 const savedBlocos = data.blocos && Array.isArray(data.blocos) ? data.blocos : blocosLimpos;
                 const normalizedSavedBlocos = normalizeBlocosFromServer(savedBlocos);
-                setBlocos(normalizedSavedBlocos); setBlocosOriginais(normalizedSavedBlocos); setIsExistingContent(true);
+                setBlocos(normalizedSavedBlocos);
+                // Deep clone para evitar que blocos e blocosOriginais compartilhem a mesma referência
+                setBlocosOriginais(JSON.parse(JSON.stringify(normalizedSavedBlocos)));
+                setIsExistingContent(true);
                 // sync radius state with saved value so the form is no longer considered dirty
                 try {
                     if (typeof data.radius_m !== 'undefined' && data.radius_m !== null) {
@@ -868,7 +872,8 @@ export default function Content() {
                     // normalize server blocos before setting state
                     const normalized = normalizeBlocosFromServer(data.blocos || []);
                     setBlocos(normalized);
-                    setBlocosOriginais(normalized);
+                    // Deep clone para evitar que blocos e blocosOriginais compartilhem a mesma referência
+                    setBlocosOriginais(JSON.parse(JSON.stringify(normalized)));
                     // marca que existe conteúdo previamente salvo para essa combinação de marca/região
                     setIsExistingContent(Array.isArray(normalized) && normalized.length > 0);
 
