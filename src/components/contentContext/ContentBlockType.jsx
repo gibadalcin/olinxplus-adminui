@@ -182,20 +182,25 @@ export default function ContentBlockType({
                 const origItems = (original.meta && Array.isArray(original.meta.items)) ? original.meta.items : [];
                 const currItems = Array.isArray(carouselImagens) ? carouselImagens : [];
 
-                // Normaliza items para comparação justa
-                const normalizeItem = (it) => ({
-                    url: String(it.url || '').trim(),
-                    subtipo: String(it.subtipo || '').trim(),
-                    meta: it.meta ? JSON.stringify(it.meta) : ''
-                });
+                // Normaliza items para comparação justa incluindo action
+                const normalizeItem = (it) => {
+                    const action = (it.meta && it.meta.action) || null;
+                    return {
+                        url: String(it.url || '').trim(),
+                        subtipo: String(it.subtipo || '').trim(),
+                        action_type: action ? String(action.type || '') : '',
+                        action_href: action && action.type === 'link' ? String(action.href || '') : '',
+                        action_target: action && action.type === 'link' ? String(action.target || '_self') : '',
+                        action_name: action && action.type === 'callback' ? String(action.name || '') : '',
+                        action_disabled: action ? Boolean(action.disabled) : false
+                    };
+                };
 
                 const origNorm = origItems.map(normalizeItem);
                 const currNorm = currItems.map(normalizeItem);
 
                 return JSON.stringify(origNorm) !== JSON.stringify(currNorm);
-            }
-
-            const origMeta = (original.meta && typeof original.meta === 'object') ? { ...(original.meta || {}) } : {};
+            } const origMeta = (original.meta && typeof original.meta === 'object') ? { ...(original.meta || {}) } : {};
             // if original has top-level fields, ensure they appear in origMeta for fair comparison
             if (!origMeta.label && original.label) origMeta.label = original.label;
             if (!origMeta.variant && original.variant) origMeta.variant = original.variant;

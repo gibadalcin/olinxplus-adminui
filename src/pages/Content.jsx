@@ -98,7 +98,8 @@ export default function Content() {
                     subtipo: it?.subtipo || '',
                     url: (it && (it.url || it.conteudo)) || '',
                     nome: (it && (it.nome || (it.meta && it.meta.nome))) || '',
-                    filename: (it && (it.filename || (it.meta && it.meta.filename))) || ''
+                    filename: (it && (it.filename || (it.meta && it.meta.filename))) || '',
+                    action: (it && it.meta && it.meta.action) || null
                 })) : []
             };
         };
@@ -136,6 +137,14 @@ export default function Content() {
                 if ((ai.url || '') !== (bi.url || '')) return false;
                 if ((ai.nome || '') !== (bi.nome || '')) return false;
                 if ((ai.filename || '') !== (bi.filename || '')) return false;
+                // Comparar action dos items do carousel
+                const aiAction = ai.action || {};
+                const biAction = bi.action || {};
+                if ((aiAction.type || '') !== (biAction.type || '')) return false;
+                if ((aiAction.href || '') !== (biAction.href || '')) return false;
+                if ((aiAction.target || '_self') !== (biAction.target || '_self')) return false;
+                if ((aiAction.name || '') !== (biAction.name || '')) return false;
+                if (Boolean(aiAction.disabled) !== Boolean(biAction.disabled)) return false;
             }
         }
         return true;
