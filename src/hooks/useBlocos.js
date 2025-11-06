@@ -209,13 +209,18 @@ export function useBlocos(limite = 10) {
           ...bloco,
           tipoSelecionado: tipo,
           conteudo: null,
-          items: items.map((it) => ({
-            url: it.url || "",
-            subtipo: it.subtipo || "",
-            meta: it.meta && Object.keys(it.meta).length ? { ...(it.meta || {}) } : undefined,
-            nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split("/").pop()) || "",
-            filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split("/").slice(3).join("/")) || "",
-          })),
+          items: items.map((it, itemIdx) => {
+            // Preserve os campos originais do item se existirem
+            const originalItem = bloco.items && bloco.items[itemIdx];
+            return {
+              ...(originalItem || {}), // Preserva todos os campos do item original
+              url: it.url || "",
+              subtipo: it.subtipo || "",
+              meta: it.meta && Object.keys(it.meta).length ? { ...(it.meta || {}) } : undefined,
+              nome: (it.meta && it.meta.nome) || (it.url && String(it.url).split("/").pop()) || "",
+              filename: (it.meta && it.meta.filename) || (it.url && String(it.url).split("/").slice(3).join("/")) || "",
+            };
+          }),
         };
       } else if (tipo === 'botao_default' || tipo === 'botao_destaque' || String(tipo).startsWith('botao')) {
         // update button block meta
