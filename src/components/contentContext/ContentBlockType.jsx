@@ -177,6 +177,24 @@ export default function ContentBlockType({
             const original = (Array.isArray(blocos) && blocos[editIdx]) ? blocos[editIdx] : null;
             if (!original) return true;
 
+            // Verifica mudanças em carousel
+            if (tipoSelecionado === 'carousel') {
+                const origItems = (original.meta && Array.isArray(original.meta.items)) ? original.meta.items : [];
+                const currItems = Array.isArray(carouselImagens) ? carouselImagens : [];
+
+                // Normaliza items para comparação justa
+                const normalizeItem = (it) => ({
+                    url: String(it.url || '').trim(),
+                    subtipo: String(it.subtipo || '').trim(),
+                    meta: it.meta ? JSON.stringify(it.meta) : ''
+                });
+
+                const origNorm = origItems.map(normalizeItem);
+                const currNorm = currItems.map(normalizeItem);
+
+                return JSON.stringify(origNorm) !== JSON.stringify(currNorm);
+            }
+
             const origMeta = (original.meta && typeof original.meta === 'object') ? { ...(original.meta || {}) } : {};
             // if original has top-level fields, ensure they appear in origMeta for fair comparison
             if (!origMeta.label && original.label) origMeta.label = original.label;
@@ -232,7 +250,7 @@ export default function ContentBlockType({
             } catch (e) { }
             return JSON.stringify(normOrig) !== JSON.stringify(normCur);
         } catch (e) { return true; }
-    }, [editIdx, blocos, buttonLabel, buttonActionType, buttonHref, buttonCallbackName, buttonVariant, buttonColor, buttonIconFamily, buttonIcon, buttonIconInvert, buttonSize, buttonPosition, buttonDisabled, buttonAnalytics, buttonTarget]);
+    }, [editIdx, blocos, tipoSelecionado, carouselImagens, buttonLabel, buttonActionType, buttonHref, buttonCallbackName, buttonVariant, buttonColor, buttonIconFamily, buttonIcon, buttonIconInvert, buttonSize, buttonPosition, buttonDisabled, buttonAnalytics, buttonTarget]);
 
     // estilos padrão de botões usados no modal
     const BTN = {
@@ -314,8 +332,8 @@ export default function ContentBlockType({
         setCarouselImagens(novas);
     }
     function handleAddCarouselImg() {
-        // Impede adicionar mais de 4 itens
-        if (Array.isArray(carouselImagens) && carouselImagens.length >= 4) return;
+        // Impede adicionar mais de 6 itens
+        if (Array.isArray(carouselImagens) && carouselImagens.length >= 6) return;
         setCarouselImagens([...carouselImagens, { url: "", subtipo: "" }]);
     }
     function handleRemoveCarouselImg(idx) {
@@ -798,20 +816,20 @@ export default function ContentBlockType({
                     <button
                         type="button"
                         onClick={handleAddCarouselImg}
-                        disabled={Array.isArray(carouselImagens) && carouselImagens.length >= 4}
+                        disabled={Array.isArray(carouselImagens) && carouselImagens.length >= 6}
                         style={{
-                            background: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? '#b2b2b2' : '#2196f3',
+                            background: (Array.isArray(carouselImagens) && carouselImagens.length >= 6) ? '#b2b2b2' : '#2196f3',
                             color: '#fff',
                             border: 'none',
                             borderRadius: 4,
                             padding: '8px 16px',
-                            cursor: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'not-allowed' : 'pointer',
+                            cursor: (Array.isArray(carouselImagens) && carouselImagens.length >= 6) ? 'not-allowed' : 'pointer',
                             marginTop: 8,
-                            opacity: (Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 0.7 : 1
+                            opacity: (Array.isArray(carouselImagens) && carouselImagens.length >= 6) ? 0.7 : 1
                         }}
-                        title={(Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'Limite de 4 mídias por carousel atingido' : 'Adicionar imagem'}
+                        title={(Array.isArray(carouselImagens) && carouselImagens.length >= 6) ? 'Limite de 6 mídias por carousel atingido' : 'Adicionar imagem'}
                     >
-                        {(Array.isArray(carouselImagens) && carouselImagens.length >= 4) ? 'Limite atingido (4)' : 'Adicionar imagem'}
+                        {(Array.isArray(carouselImagens) && carouselImagens.length >= 6) ? 'Limite atingido (6)' : 'Adicionar imagem'}
                     </button>
                 </div>
             );
