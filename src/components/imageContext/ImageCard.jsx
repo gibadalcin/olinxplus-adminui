@@ -84,13 +84,13 @@ export default function ImageCard({ img, isMobile, isAdmin, usuario, onDelete })
                     </button>
                 )}
             </div>
-            {img.url ? (
+            {previewUrl ? (
                 <img
                     src={previewUrl}
                     srcSet={img.webpUrl ? `${img.webpUrl} 1x, ${img.webpUrl2x} 2x` : undefined}
                     width={212}
                     height={119}
-                    alt={img.name || "Logo"}
+                    alt={img.nome || "Logo"}
                     decoding="async"
                     onLoad={() => setImageLoaded(true)}
                     style={{

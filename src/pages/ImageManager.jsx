@@ -116,12 +116,20 @@ export default function ImageManager() {
 
     try {
       const token = await usuario.getIdToken();
-      await deleteImage(id, token);
-      // Atualiza o estado localmente para feedback rápido
-      setImagens(prevImagens => prevImagens.filter(img => img._id !== id));
+      const res = await deleteImage(id, token);
+      // Apenas remove da UI se o backend informou sucesso
+      if (res && res.success) {
+        setImagens(prevImagens => prevImagens.filter(img => img._id !== id));
+        return true;
+      } else {
+        console.error('Falha ao deletar imagem no servidor', res);
+        alert('Falha ao excluir a imagem no servidor. Verifique os logs.');
+        return false;
+      }
     } catch (error) {
       console.error("Erro ao deletar imagem:", error);
       alert("Erro ao deletar imagem.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -185,9 +193,13 @@ export default function ImageManager() {
 
   const confirmDelete = async () => {
     if (!imgToDelete) return;
-    await handleDelete(imgToDelete);
-    setModalOpen(false);
-    setImgToDelete(null);
+    const ok = await handleDelete(imgToDelete);
+    if (ok) {
+      setModalOpen(false);
+      setImgToDelete(null);
+    } else {
+      // mantém o modal aberto para o usuário tentar novamente ou cancelar
+    }
   };
 
   const handleNavigateToContent = (imgId, ownerUid) => {
