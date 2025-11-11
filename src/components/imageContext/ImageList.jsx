@@ -44,6 +44,7 @@ export default function ImageList({ imagens, isMobile, isAdmin, usuario, onDelet
                 display: "flex",
                 flexWrap: "wrap",
                 gap: isMobile ? "1rem" : "2rem",
+                justifyContent: isMobile ? "center" : "flex-start",
                 width: "100%",
                 margin: "0 auto",
             }}>
