@@ -114,6 +114,15 @@ export default function ImageManager() {
     if (!usuario) return;
     setLoading(true); // Opcional: mostrar loading durante a exclusão
 
+    // Validação básica: se o id não parece um ObjectId do Mongo (24 hex), evita chamar o servidor
+    if (typeof id === 'string' && !/^[a-fA-F0-9]{24}$/.test(id)) {
+      console.warn('ID de imagem inválido detectado no cliente:', id);
+      alert('ID da imagem inválido localmente. Sincronizando lista com o servidor.');
+      await fetchImages();
+      setLoading(false);
+      return false;
+    }
+
     try {
       const token = await usuario.getIdToken();
       const res = await deleteImage(id, token);
