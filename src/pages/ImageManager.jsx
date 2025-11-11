@@ -154,30 +154,26 @@ export default function ImageManager() {
           alert("Erro ao enviar imagem.");
         }
       } else {
-        // ✅ OTIMIZAÇÃO: Adiciona imagem localmente ao invés de recarregar tudo
-        const novaImagem = result.data || result.image || {
-          _id: Date.now().toString(),
-          nome,
-          url: result.url,
-          owner_uid: usuario.uid
-        };
+        // Se o servidor retornou o objeto criado (com _id), preferimos inseri-lo localmente
+        const created = result.data || result.image;
 
-        // Evita cache do browser quando a imagem tem o mesmo nome/URL: adiciona cache-buster
         const appendCacheBuster = (u) => {
           if (!u) return u;
           const sep = u.includes("?") ? "&" : "?";
           return `${u}${sep}t=${Date.now()}`;
         };
 
-        // Não adicionar cache-buster em signed URLs (assinatura seria invalidada)
-        if (novaImagem.signed_url) {
-          // use signed_url como está
-          novaImagem.signed_url = novaImagem.signed_url;
-        } else if (novaImagem.url) {
-          // apenas para URLs públicas ou internas adicionamos cache-buster
-          novaImagem.url = appendCacheBuster(novaImagem.url);
+        if (created && created._id) {
+          // Protege signed_url de alterações
+          if (!created.signed_url && created.url) {
+            created.url = appendCacheBuster(created.url);
+          }
+          setImagens(prevImagens => [created, ...prevImagens]); // Adiciona no início
+        } else {
+          // Se o backend não devolveu o recurso criado (sem _id), evita criar um id temporário
+          // e faz um refresh completo da lista para obter o estado autoritativo do servidor.
+          await fetchImages();
         }
-        setImagens(prevImagens => [novaImagem, ...prevImagens]); // Adiciona no início
 
         // Limpa o formulário
         setNome("");
