@@ -153,6 +153,22 @@ export default function ImageManager() {
           url: result.url,
           owner_uid: usuario.uid
         };
+
+        // Evita cache do browser quando a imagem tem o mesmo nome/URL: adiciona cache-buster
+        const appendCacheBuster = (u) => {
+          if (!u) return u;
+          const sep = u.includes("?") ? "&" : "?";
+          return `${u}${sep}t=${Date.now()}`;
+        };
+
+        // Não adicionar cache-buster em signed URLs (assinatura seria invalidada)
+        if (novaImagem.signed_url) {
+          // use signed_url como está
+          novaImagem.signed_url = novaImagem.signed_url;
+        } else if (novaImagem.url) {
+          // apenas para URLs públicas ou internas adicionamos cache-buster
+          novaImagem.url = appendCacheBuster(novaImagem.url);
+        }
         setImagens(prevImagens => [novaImagem, ...prevImagens]); // Adiciona no início
 
         // Limpa o formulário

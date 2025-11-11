@@ -1,8 +1,32 @@
+import React, { useEffect, useState } from "react";
 import CustomButton from "./../../components/globalContext/CustomButton";
 
 export default function DeleteImageModal({ open, imgToDelete, imagens, onConfirm, onClose }) {
     if (!open) return null;
     const imgObj = imagens.find(i => i._id === imgToDelete);
+    const [imageSrc, setImageSrc] = useState(null);
+
+    useEffect(() => {
+        if (!imgObj) {
+            setImageSrc(null);
+            return;
+        }
+        const signed = imgObj.signed_url || (imgObj.meta && imgObj.meta.signed_url);
+        const publicUrl = imgObj.url;
+        if (signed) {
+            // Não modificar signed URLs (assinatura sensível à query string)
+            setImageSrc(signed);
+            return;
+        }
+        if (!publicUrl) {
+            setImageSrc(null);
+            return;
+        }
+        // Para URLs públicas, adiciona cache-buster
+        const sep = publicUrl.includes("?") ? "&" : "?";
+        setImageSrc(`${publicUrl}${sep}t=${Date.now()}`);
+    }, [imgObj]);
+
     return (
         <div style={{
             position: "fixed",
@@ -20,10 +44,10 @@ export default function DeleteImageModal({ open, imgToDelete, imagens, onConfirm
                 textAlign: "center"
             }}>
                 <h2 style={{ color: "#d32f2f", marginBottom: "1rem" }}>Confirmar exclusão</h2>
-                {imgObj && (
+                {imageSrc && (
                     <img
-                        src={imgObj.url}
-                        alt={imgObj.nome}
+                        src={imageSrc}
+                        alt={imgObj?.nome}
                         style={{
                             width: "120px",
                             borderRadius: "8px",
