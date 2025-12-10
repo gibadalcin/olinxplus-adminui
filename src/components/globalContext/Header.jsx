@@ -30,7 +30,7 @@ export default function Header() {
     }), [isMobile]);
 
     const logoStyle = useMemo(() => ({
-        height: isMobile ? "124px" : "160px",
+        height: isMobile ? "224px" : "260px",
         width: "100%",
         objectFit: "contain",
         transition: 'height 0.3s ease-in-out',
