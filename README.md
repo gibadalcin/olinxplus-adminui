@@ -1,4 +1,4 @@
-# OlinxRA Admin UI
+# Olinx Plus Admin UI
 
 <div align="center">
 
@@ -7,8 +7,11 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=white)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Material-UI](https://img.shields.io/badge/MUI-7-007FFF.svg?logo=mui&logoColor=white)](https://mui.com/)
+[![React Router](https://img.shields.io/badge/React%20Router-7-CA4245.svg?logo=reactrouter&logoColor=white)](https://reactrouter.com/)
 
 Interface intuitiva para criação e gerenciamento de experiências de Realidade Aumentada
+
+[Documentação](https://github.com/gibadalcin/olinxplus-docs) • [Backend API](https://github.com/gibadalcin/olinxplus-backend) • [Mobile App](https://github.com/gibadalcin/olinxplus)
 
 </div>
 
@@ -16,7 +19,7 @@ Interface intuitiva para criação e gerenciamento de experiências de Realidade
 
 ## 📋 Visão Geral
 
-OlinxRA Admin UI é uma aplicação web React que permite aos administradores:
+Olinx Plus Admin UI é uma aplicação web React moderna que permite aos administradores:
 
 - 🎨 **Criar Conteúdo AR**: Editor visual de blocos de conteúdo (imagens, vídeos, carrosséis, modelos 3D)
 - 🏷️ **Gerenciar Logos**: Upload e indexação de logos de marcas para reconhecimento visual
@@ -30,14 +33,15 @@ OlinxRA Admin UI é uma aplicação web React que permite aos administradores:
 
 - Node.js 18 ou superior
 - npm ou yarn
-- Backend OlinxRA rodando (porta 8000)
+- Backend Olinx Plus rodando (porta 8000)
 - Projeto Firebase configurado
 
 ### Instalação
 
-1. **Navegue até o diretório**
+1. **Clone o repositório**
 ```bash
-cd olinxra-adminui
+git clone https://github.com/gibadalcin/olinxplus-adminui.git
+cd olinxplus-adminui
 ```
 
 2. **Instale as dependências**
@@ -55,25 +59,31 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "sua-api-key",
+  apiKey: "AIza...",
   authDomain: "seu-projeto.firebaseapp.com",
-  projectId: "seu-projeto",
+  projectId: "seu-projeto-id",
   storageBucket: "seu-projeto.appspot.com",
   messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+  appId: "1:123456789:web:abcdef123456"
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export default app;
 ```
 
 4. **Configure a URL da API**
 
-Edite `src/api.js` se necessário:
+Crie arquivo `.env` (ou edite `src/config/api.js`):
 
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+Ou em `src/config/api.js`:
 ```javascript
-const API_BASE_URL = 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 ```
 
 5. **Inicie o servidor de desenvolvimento**
@@ -85,15 +95,30 @@ A aplicação estará disponível em `http://localhost:5173`
 
 ### Desenvolvimento Completo (Frontend + Backend)
 
-Para rodar frontend e backend simultaneamente:
-
 ```bash
 npm run dev:full
 ```
 
-Isso iniciará:
-- Backend na porta 8000
-- Frontend na porta 5173
+Esse comando inicia:
+- Frontend (porta 5173)
+- Backend Olinx Plus (porta 8000)
+
+**Requisitos:**
+- Backend deve estar no diretório `../olinxplus-backend/`
+
+### Build para Produção
+
+```bash
+npm run build
+npm run preview  # Preview do build
+```
+
+Deploy para Vercel/Netlify:
+```bash
+vercel --prod
+# ou
+netlify deploy --prod
+```
 
 ## 🎨 Funcionalidades
 
@@ -156,7 +181,7 @@ Sistema de login integrado com Firebase:
 ## 🏗️ Arquitetura
 
 ```
-olinxra-adminui/
+olinxplus-adminui/
 ├── public/                    # Assets estáticos
 │
 ├── src/
@@ -460,7 +485,7 @@ firebase deploy --only hosting
 Configure no serviço de hospedagem:
 
 ```env
-VITE_API_BASE_URL=https://api.olinxra.com
+VITE_API_BASE_URL=https://api.olinxplus.com
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=...
 ```
@@ -493,5 +518,5 @@ Este projeto está sob a licença MIT.
 ---
 
 <div align="center">
-<strong>OlinxRA Admin UI</strong> | Desenvolvido com React e Material-UI
+<strong>Olinx Plus Admin UI</strong> | Desenvolvido com React e Material-UI
 </div>

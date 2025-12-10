@@ -70,7 +70,7 @@ Este documento resume os endpoints usados pelo Admin UI e pelo App mobile (recon
   {
     "success": true,
     "filename": "<owner_uid>/<nome_upload.jpg>",
-    "url": "gs://olinxra-conteudo/<owner_uid>/<nome_upload.jpg>",
+    "url": "gs://olinxplus-conteudo/<owner_uid>/<nome_upload.jpg>",
     "signed_url": "https://storage.googleapis.com/...."  // pode ser retornado ou o admin deve chamar /api/conteudo-signed-url
   }
 - Observações:
@@ -152,7 +152,7 @@ Resposta esperada:
 {
   "success": true,
   "filename": "useruid/image.jpg",
-  "url": "gs://olinxra-conteudo/useruid/image.jpg",
+  "url": "gs://olinxplus-conteudo/useruid/image.jpg",
   "signed_url": "https://storage.googleapis.com/..."
 }
 ```

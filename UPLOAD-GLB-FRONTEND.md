@@ -170,4 +170,4 @@ setGlbFile(null); // ← novo
 
 - Backend: `docs/UPLOAD-GLB-CUSTOMIZADO.md`
 - Endpoint: `POST /add-content-image/`
-- Schema: `olinxra-backend/schemas.py`
+- Schema: `olinxplus-backend/schemas.py`
