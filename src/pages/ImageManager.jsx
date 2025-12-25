@@ -13,7 +13,7 @@ import ImageList from "../components/imageContext/ImageList";
 import DeleteImageModal from "../components/imageContext/DeleteImageModal";
 
 const MOBILE_BREAKPOINT = 768;
-const MAIN_BG_COLOR = "#012E57";
+const MAIN_BG_COLOR = "#0047AB";
 const LEFT_COL_BG_COLOR = "#ffffff";
 
 // Função utilitária para normalizar a resposta da API (simplificada)
@@ -252,7 +252,7 @@ export default function ImageManager() {
           <CustomButton
             type="button"
             onClick={() => navigate('/dashboard')}
-            style={{ background: MAIN_BG_COLOR, color: "#fff", border: "1px solid #fff" }}
+            style={{ background: "#012E57", color: "#fff", border: "1px solid #fff" }}
           >
             Dashboard
           </CustomButton>
@@ -260,10 +260,11 @@ export default function ImageManager() {
             type="button"
             onClick={() => setShowAllAdmins(v => !v)}
             style={{
-              background: showAllAdmins ? "#FFD700" : MAIN_BG_COLOR,
-              color: showAllAdmins ? "#151515" : "#fff",
+              background: showAllAdmins ? "#FFB703" : "#012E57",
+              color: "#fff",
               border: "1px solid #fff",
               boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+              textShadow: "0 1px 4px rgba(0,0,0,0.50)",
               transition: "background 0.2s, color 0.2s",
             }}
             disabled={loading}
@@ -368,7 +369,7 @@ export default function ImageManager() {
                     alignItems: "center",
                     borderRadius: 12,
                     boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-                    background: "transparent",
+                    background: "#ffffff01",
                     scrollbarWidth: "none",
                     height: "auto",
                     maxHeight: "60vh",

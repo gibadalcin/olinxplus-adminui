@@ -9,7 +9,7 @@ import FadeIn from "../components/globalContext/FadeIn";
 import LoginForm from "../components/loginContext/LoginForm";
 
 const MOBILE_BREAKPOINT = 768;
-const MAIN_BG_COLOR = "#012E57"; // Azul escuro
+const MAIN_BG_COLOR = "#0047AB"; // Azul escuro
 const LEFT_COL_BG_COLOR = "#ffffff"; // Branco
 
 export default function Login() {

@@ -12,7 +12,7 @@ import DeleteAdminModal from "../components/adminContext/DeleteAdminModal";
 
 const MOBILE_BREAKPOINT = 768;
 const TABLET_BREAKPOINT = 1420;
-const MAIN_BG_COLOR = "#012E57";
+const MAIN_BG_COLOR = "#0047AB";
 const LEFT_COL_BG_COLOR = "rgba(255,255,255)";
 
 export default function Register() {

@@ -20,7 +20,7 @@ const PageLoader = () => (
   <div style={{
     minHeight: "100vh",
     width: "100vw",
-    backgroundColor: "#012E57",
+    backgroundColor: "#0047AB",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",

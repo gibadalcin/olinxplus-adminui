@@ -1046,7 +1046,7 @@ export default function Content() {
                 style={{
                     minHeight: "100vh",
                     width: "100vw",
-                    backgroundColor: "#012E57",
+                    backgroundColor: "#0047AB",
                     position: "relative",
                     display: "flex",
                     flexDirection: "column",
@@ -1118,7 +1118,6 @@ export default function Content() {
                                     alignItems: "center",
                                     justifyContent: "center",
                                     maxWidth: isMobile ? "86vw" : "1280px",
-                                    padding: "20px"
                                 }}
                             >
                                 <div style={{

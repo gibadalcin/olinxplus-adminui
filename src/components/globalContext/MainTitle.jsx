@@ -7,7 +7,7 @@ export default function MainTitle({ children, isMobile, isTablet }) {
                 marginBottom: "2rem",
                 fontWeight: "400",
                 textAlign: "center",
-                marginTop: isMobile ? "1rem" : "4rem",
+                marginTop: "1.5rem",
                 width: isTablet ? '80vw' : '70vw',
             }}
         >

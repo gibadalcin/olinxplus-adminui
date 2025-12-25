@@ -7,12 +7,12 @@ export default function DashboardActions({ usuario, isMobile, onImages, onRegist
             <CustomButton
                 onClick={onImages}
                 style={{
-                    background: "#FFD700",
-                    color: "#151515",
+                    background: "#FFB703",
+                    color: "#ffffff",
                     borderStyle: "solid",
                     borderWidth: "1px",
                     borderColor: "rgba(255,255,255,0.90)",
-                    textShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                    textShadow: "0 1px 4px rgba(0,0,0,0.50)",
                 }}
             >
                 Gerenciar Imagens

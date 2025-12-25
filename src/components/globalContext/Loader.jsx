@@ -6,16 +6,16 @@ export default function Loader({ height = "60vh" }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#012E57", // Adicione esta linha!
+            background: "#0047AB", // Adicione esta linha!
         }}>
             <div style={{
-                border: "6px solid #FFD700",
-                borderTop: "6px solid #012E57",
+                border: "6px solid #FFB703",
+                borderTop: "6px solid #0047AB",
                 borderRadius: "50%",
                 width: "48px",
                 height: "48px",
                 animation: "spin 1s linear infinite",
-                background: "#012E57",
+                background: "#0047AB",
             }} />
             <style>
                 {`@keyframes spin { 100% { transform: rotate(360deg); } }`}
